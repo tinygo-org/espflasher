@@ -26,6 +26,8 @@ var defESP32C3 = &chipDef{
 	BootloaderFlashOffset: 0x0,
 
 	SupportsEncryptedFlash: true,
+	ROMHasCompressedFlash:  true,
+	ROMHasChangeBaud:       true,
 
 	FlashFrequency: map[string]byte{
 		"80m": 0xF,

@@ -90,6 +90,15 @@ type chipDef struct {
 	// ESP8266 and original ESP32 do not.
 	SupportsEncryptedFlash bool
 
+	// ROMHasCompressedFlash indicates the ROM bootloader supports the
+	// compressed flash commands (FLASH_DEFL_BEGIN/DATA/END, 0x10-0x12).
+	// ESP32 and newer ROMs support this; ESP8266 ROM does not.
+	ROMHasCompressedFlash bool
+
+	// ROMHasChangeBaud indicates the ROM bootloader supports the
+	// CHANGE_BAUD command (0x0F). ESP32+ ROMs support this; ESP8266 does not.
+	ROMHasChangeBaud bool
+
 	// FlashFrequency maps frequency strings to register values.
 	FlashFrequency map[string]byte
 
