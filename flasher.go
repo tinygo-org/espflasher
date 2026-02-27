@@ -309,15 +309,18 @@ func (f *Flasher) FlashImage(data []byte, offset uint32, progress ProgressFunc) 
 		return fmt.Errorf("attach flash: %w", err)
 	}
 
-	// Optionally switch to higher baud rate
-	if f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
+	// Optionally switch to higher baud rate (not supported by ESP8266 ROM)
+	canChangeBaud := f.chip == nil || f.chip.ROMHasChangeBaud || f.conn.isStub
+	if canChangeBaud && f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
 		if err := f.changeBaud(f.opts.FlashBaudRate); err != nil {
 			f.logf("Warning: could not change baud rate to %d: %v", f.opts.FlashBaudRate, err)
 			// Continue at original baud rate
 		}
 	}
 
-	if f.opts.Compress {
+	// Use compressed flash only if supported (ESP8266 ROM doesn't support it)
+	canCompress := f.chip == nil || f.chip.ROMHasCompressedFlash || f.conn.isStub
+	if f.opts.Compress && canCompress {
 		return f.flashCompressed(data, offset, progress)
 	}
 	return f.flashUncompressed(data, offset, progress)
@@ -342,12 +345,16 @@ func (f *Flasher) FlashImages(images []ImagePart, progress ProgressFunc) error {
 		return fmt.Errorf("attach flash: %w", err)
 	}
 
-	// Optionally switch to higher baud rate
-	if f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
+	// Optionally switch to higher baud rate (not supported by ESP8266 ROM)
+	canChangeBaud := f.chip == nil || f.chip.ROMHasChangeBaud || f.conn.isStub
+	if canChangeBaud && f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
 		if err := f.changeBaud(f.opts.FlashBaudRate); err != nil {
 			f.logf("Warning: could not change baud rate to %d: %v", f.opts.FlashBaudRate, err)
 		}
 	}
+
+	// Determine if compressed flash is available
+	canCompress := f.chip == nil || f.chip.ROMHasCompressedFlash || f.conn.isStub
 
 	totalSize := 0
 	for _, img := range images {
@@ -380,7 +387,7 @@ func (f *Flasher) FlashImages(images []ImagePart, progress ProgressFunc) error {
 			}
 		}
 
-		if f.opts.Compress {
+		if f.opts.Compress && canCompress {
 			err = f.flashCompressed(data, img.Offset, partProgress)
 		} else {
 			err = f.flashUncompressed(data, img.Offset, partProgress)
@@ -610,7 +617,12 @@ func (f *Flasher) Reset() {
 }
 
 // attachFlash attaches the SPI flash and configures parameters.
+// ESP8266 does not need (or support) SPI attach; its ROM handles flash directly.
 func (f *Flasher) attachFlash() error {
+	if f.chip != nil && f.chip.ChipType == ChipESP8266 {
+		return nil // ESP8266 ROM handles flash internally
+	}
+
 	f.logf("Attaching SPI flash...")
 
 	if err := f.conn.spiAttach(0); err != nil {
