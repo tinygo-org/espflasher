@@ -1,0 +1,739 @@
+package espflash
+
+import (
+	"bytes"
+	"compress/zlib"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"time"
+
+	"go.bug.st/serial"
+)
+
+// FlasherOptions configures the Flasher behavior.
+type FlasherOptions struct {
+	// BaudRate is the initial baud rate for serial communication.
+	// Default: 115200.
+	BaudRate int
+
+	// FlashBaudRate is the baud rate used during flash data transfer.
+	// If set and higher than BaudRate, the flasher will switch to this rate
+	// after connecting. Set to 0 to keep the initial baud rate.
+	// Default: 460800.
+	FlashBaudRate int
+
+	// ChipType forces a specific chip type instead of auto-detection.
+	// Default: ChipAuto (auto-detect).
+	ChipType ChipType
+
+	// ResetMode controls how the chip is reset to enter bootloader.
+	// Default: ResetDefault.
+	ResetMode ResetMode
+
+	// ConnectAttempts is the number of connection attempts before failing.
+	// Default: 7.
+	ConnectAttempts int
+
+	// Compress enables zlib compression for flash data transfer.
+	// Significantly faster for large images. Requires stub loader or
+	// ESP32+ ROM bootloader.
+	// Default: true.
+	Compress bool
+
+	// FlashSize overrides flash size detection.
+	// Valid values: "1MB", "2MB", "4MB", "8MB", "16MB".
+	// Empty string means auto-detect.
+	FlashSize string
+
+	// Logger receives informational messages during flashing.
+	// If nil, messages are discarded silently.
+	Logger Logger
+}
+
+// Logger is the interface for receiving progress and status messages.
+type Logger interface {
+	// Logf logs a formatted informational message.
+	Logf(format string, args ...interface{})
+}
+
+// ProgressFunc is called with progress updates during flashing.
+// current is the bytes transferred so far, total is the total bytes.
+type ProgressFunc func(current, total int)
+
+// DefaultOptions returns FlasherOptions with sensible defaults.
+func DefaultOptions() *FlasherOptions {
+	return &FlasherOptions{
+		BaudRate:        115200,
+		FlashBaudRate:   460800,
+		ChipType:        ChipAuto,
+		ResetMode:       ResetDefault,
+		ConnectAttempts: 7,
+		Compress:        true,
+	}
+}
+
+// Flasher manages the connection to an ESP device and provides
+// high-level flash operations.
+type Flasher struct {
+	port    serial.Port
+	conn    *conn
+	chip    *chipDef
+	opts    *FlasherOptions
+	isStub  bool
+	portStr string
+}
+
+// NewFlasher creates a new Flasher connected to the given serial port.
+//
+// It opens the serial port, enters the bootloader, syncs with the device,
+// and detects the chip type. On success, the Flasher is ready for flash
+// operations.
+//
+// If opts is nil, DefaultOptions() is used.
+//
+// Example:
+//
+//	f, err := espflash.NewFlasher("/dev/ttyUSB0", nil)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer f.Close()
+func NewFlasher(portName string, opts *FlasherOptions) (*Flasher, error) {
+	if opts == nil {
+		opts = DefaultOptions()
+	}
+
+	mode := &serial.Mode{
+		BaudRate: opts.BaudRate,
+		Parity:   serial.NoParity,
+		DataBits: 8,
+		StopBits: serial.OneStopBit,
+	}
+
+	port, err := serial.Open(portName, mode)
+	if err != nil {
+		return nil, fmt.Errorf("open serial port %s: %w", portName, err)
+	}
+
+	f := &Flasher{
+		port:    port,
+		conn:    newConn(port),
+		opts:    opts,
+		portStr: portName,
+	}
+
+	// Connect to the bootloader
+	if err := f.connect(); err != nil {
+		port.Close() //nolint:errcheck
+		return nil, err
+	}
+
+	return f, nil
+}
+
+// Close releases the serial port and associated resources.
+func (f *Flasher) Close() error {
+	return f.port.Close()
+}
+
+// ChipType returns the detected chip type.
+func (f *Flasher) ChipType() ChipType {
+	if f.chip != nil {
+		return f.chip.ChipType
+	}
+	return ChipAuto
+}
+
+// ChipName returns the detected chip name (e.g. "ESP32-S3").
+func (f *Flasher) ChipName() string {
+	if f.chip != nil {
+		return f.chip.Name
+	}
+	return "Unknown"
+}
+
+// connect performs the bootloader connection sequence:
+// reset → sync → detect chip.
+func (f *Flasher) connect() error {
+	f.logf("Connecting to %s...", f.portStr)
+
+	attempts := f.opts.ConnectAttempts
+	if attempts <= 0 {
+		attempts = 7
+	}
+
+	var lastErr error
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		// Reset the chip into bootloader mode
+		if f.opts.ResetMode == ResetDefault {
+			if attempt%2 == 0 {
+				classicReset(f.port, defaultResetDelay)
+			} else {
+				tightReset(f.port, defaultResetDelay+500*time.Millisecond)
+			}
+		} else if f.opts.ResetMode == ResetUSBJTAG {
+			usbJTAGSerialReset(f.port)
+		}
+		// ResetNoReset: skip reset entirely
+
+		// Try to sync with the bootloader
+		f.conn.flushInput()
+		for syncAttempt := 0; syncAttempt < 5; syncAttempt++ {
+			_, err := f.conn.sync()
+			if err == nil {
+				goto synced
+			}
+			lastErr = err
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	return &SyncError{Attempts: attempts}
+
+synced:
+	f.logf("Connected.")
+
+	// Detect chip type
+	if f.opts.ChipType == ChipAuto {
+		chip, err := f.detectChip()
+		if err != nil {
+			return err
+		}
+		f.chip = chip
+	} else {
+		def, ok := chipDefs[f.opts.ChipType]
+		if !ok {
+			return fmt.Errorf("unsupported chip type: %s", f.opts.ChipType)
+		}
+		f.chip = def
+	}
+
+	_ = lastErr // suppress unused warning
+
+	f.logf("Detected chip: %s", f.chip.Name)
+
+	return nil
+}
+
+// detectChip identifies the connected ESP chip.
+func (f *Flasher) detectChip() (*chipDef, error) {
+	// Try reading the magic register first
+	magic, err := f.conn.readReg(chipDetectMagicRegAddr)
+	if err != nil {
+		return nil, fmt.Errorf("detect chip: %w", err)
+	}
+
+	// Check magic value for older chips (ESP8266, ESP32, ESP32-S2)
+	if def := detectChipByMagic(magic); def != nil {
+		return def, nil
+	}
+
+	// For newer chips, try to match the magic value against known values
+	// These chips have different magic values at the detect register
+	// Source: esptool chip detection logic
+	type magicEntry struct {
+		magic uint32
+		def   *chipDef
+	}
+
+	// Known magic values for newer chips (from esptool source)
+	newChipMagics := []magicEntry{
+		{0x6F51306F, defESP32C2}, // ESP32-C2
+		{0x1B31506F, defESP32C3}, // ESP32-C3
+		{0x0DA1806F, defESP32C6}, // ESP32-C6
+		{0xD7B73E80, defESP32H2}, // ESP32-H2
+		{0x09, defESP32S3},       // ESP32-S3 returns chip_id
+	}
+
+	for _, entry := range newChipMagics {
+		if magic == entry.magic {
+			return entry.def, nil
+		}
+	}
+
+	return nil, &ChipDetectError{MagicValue: magic}
+}
+
+// FlashImage writes a firmware image to flash at the given offset.
+//
+// The data should be a raw .bin file (not ELF). The offset is typically
+// 0x0 for a merged/combined binary, or a specific address like 0x10000
+// for the application partition.
+//
+// If progress is non-nil, it will be called periodically with the number
+// of bytes transferred so far.
+//
+// Example:
+//
+//	data, _ := os.ReadFile("firmware.bin")
+//	err := f.FlashImage(data, 0x0, func(cur, total int) {
+//	    fmt.Printf("\r%d/%d bytes", cur, total)
+//	})
+func (f *Flasher) FlashImage(data []byte, offset uint32, progress ProgressFunc) error {
+	if len(data) == 0 {
+		return fmt.Errorf("empty image data")
+	}
+
+	// Pad data to 4-byte alignment
+	if pad := len(data) % 4; pad != 0 {
+		data = append(data, make([]byte, 4-pad)...)
+	}
+
+	// Attach SPI flash if not already done
+	if err := f.attachFlash(); err != nil {
+		return fmt.Errorf("attach flash: %w", err)
+	}
+
+	// Optionally switch to higher baud rate
+	if f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
+		if err := f.changeBaud(f.opts.FlashBaudRate); err != nil {
+			f.logf("Warning: could not change baud rate to %d: %v", f.opts.FlashBaudRate, err)
+			// Continue at original baud rate
+		}
+	}
+
+	if f.opts.Compress {
+		return f.flashCompressed(data, offset, progress)
+	}
+	return f.flashUncompressed(data, offset, progress)
+}
+
+// FlashImages writes multiple firmware images to flash at their respective offsets.
+// This is useful for flashing bootloader + partition table + application in one go.
+//
+// Each entry is a (data, offset) pair.
+//
+// Example:
+//
+//	images := []espflash.ImagePart{
+//	    {Data: bootloader, Offset: 0x1000},
+//	    {Data: partTable, Offset: 0x8000},
+//	    {Data: app, Offset: 0x10000},
+//	}
+//	err := f.FlashImages(images, progress)
+func (f *Flasher) FlashImages(images []ImagePart, progress ProgressFunc) error {
+	// Attach SPI flash first
+	if err := f.attachFlash(); err != nil {
+		return fmt.Errorf("attach flash: %w", err)
+	}
+
+	// Optionally switch to higher baud rate
+	if f.opts.FlashBaudRate > 0 && f.opts.FlashBaudRate != f.opts.BaudRate {
+		if err := f.changeBaud(f.opts.FlashBaudRate); err != nil {
+			f.logf("Warning: could not change baud rate to %d: %v", f.opts.FlashBaudRate, err)
+		}
+	}
+
+	totalSize := 0
+	for _, img := range images {
+		totalSize += len(img.Data)
+	}
+
+	written := 0
+	for _, img := range images {
+		data := img.Data
+		// Pad to 4-byte alignment
+		if pad := len(data) % 4; pad != 0 {
+			data = append(data, make([]byte, 4-pad)...)
+		}
+
+		f.logf("Writing %d bytes at 0x%08X...", len(data), img.Offset)
+
+		var partProgress ProgressFunc
+		if progress != nil {
+			base := written
+			partProgress = func(cur, total int) {
+				progress(base+cur, totalSize)
+			}
+		}
+
+		var err error
+		if f.opts.Compress {
+			err = f.flashCompressed(data, img.Offset, partProgress)
+		} else {
+			err = f.flashUncompressed(data, img.Offset, partProgress)
+		}
+		if err != nil {
+			return fmt.Errorf("flash at 0x%08X: %w", img.Offset, err)
+		}
+
+		written += len(img.Data)
+	}
+
+	return nil
+}
+
+// ImagePart represents a firmware image segment with its flash offset.
+type ImagePart struct {
+	// Data is the raw binary data to flash.
+	Data []byte
+
+	// Offset is the flash address to write to (e.g. 0x0, 0x1000, 0x10000).
+	Offset uint32
+}
+
+// flashCompressed writes data to flash using zlib compression.
+func (f *Flasher) flashCompressed(data []byte, offset uint32, progress ProgressFunc) error {
+	compressed, err := compressData(data)
+	if err != nil {
+		return fmt.Errorf("compress: %w", err)
+	}
+
+	uncompSize := uint32(len(data))
+	compSize := uint32(len(compressed))
+	f.logf("Compressed %d bytes to %d (%.0f%%)", uncompSize, compSize,
+		float64(compSize)/float64(uncompSize)*100)
+
+	// Only use compression if it actually helps
+	if compSize >= uncompSize {
+		f.logf("Compression not beneficial, using uncompressed write")
+		return f.flashUncompressed(data, offset, progress)
+	}
+
+	writeSize := f.conn.flashWriteSize()
+	numBlocks := (compSize + writeSize - 1) / writeSize
+
+	f.logf("Flash begin: %d bytes at 0x%08X (%d blocks)", uncompSize, offset, numBlocks)
+
+	if err := f.conn.flashDeflBegin(uncompSize, compSize, offset, false); err != nil {
+		return err
+	}
+
+	// Send compressed data blocks
+	sent := uint32(0)
+	seq := uint32(0)
+
+	for sent < compSize {
+		blockLen := compSize - sent
+		if blockLen > writeSize {
+			blockLen = writeSize
+		}
+
+		block := compressed[sent : sent+blockLen]
+		if err := f.conn.flashDeflData(block, seq); err != nil {
+			return fmt.Errorf("flash block %d: %w", seq, err)
+		}
+
+		sent += blockLen
+		seq++
+
+		if progress != nil {
+			// Map compressed bytes sent to approximate uncompressed progress
+			approxUncomp := int(float64(sent) / float64(compSize) * float64(uncompSize))
+			if approxUncomp > int(uncompSize) {
+				approxUncomp = int(uncompSize)
+			}
+			progress(approxUncomp, int(uncompSize))
+		}
+	}
+
+	// End flash
+	if err := f.conn.flashDeflEnd(false); err != nil {
+		return err
+	}
+
+	f.logf("Flash complete. Verifying...")
+
+	// Verify via MD5 if stub is running
+	if f.conn.isStub {
+		if err := f.verifyMD5(data, offset); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// flashUncompressed writes data to flash without compression.
+func (f *Flasher) flashUncompressed(data []byte, offset uint32, progress ProgressFunc) error {
+	writeSize := f.conn.flashWriteSize()
+	dataSize := uint32(len(data))
+	numBlocks := (dataSize + writeSize - 1) / writeSize
+
+	f.logf("Flash begin: %d bytes at 0x%08X (%d blocks)", dataSize, offset, numBlocks)
+
+	if err := f.conn.flashBegin(dataSize, offset, false); err != nil {
+		return err
+	}
+
+	sent := uint32(0)
+	seq := uint32(0)
+
+	for sent < dataSize {
+		blockLen := dataSize - sent
+		if blockLen > writeSize {
+			blockLen = writeSize
+		}
+
+		block := data[sent : sent+blockLen]
+
+		// Pad last block to writeSize
+		if uint32(len(block)) < writeSize {
+			padded := make([]byte, writeSize)
+			copy(padded, block)
+			for i := len(block); i < len(padded); i++ {
+				padded[i] = 0xFF
+			}
+			block = padded
+		}
+
+		if err := f.conn.flashData(block, seq); err != nil {
+			return fmt.Errorf("flash block %d: %w", seq, err)
+		}
+
+		sent += blockLen
+		seq++
+
+		if progress != nil {
+			progress(int(sent), int(dataSize))
+		}
+	}
+
+	// End flash
+	if err := f.conn.flashEnd(false); err != nil {
+		return err
+	}
+
+	f.logf("Flash complete. Verifying...")
+
+	// Verify via MD5 if stub is running
+	if f.conn.isStub {
+		if err := f.verifyMD5(data, offset); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// verifyMD5 checks the MD5 of the flashed data against the expected value.
+func (f *Flasher) verifyMD5(data []byte, offset uint32) error {
+	expected := md5.Sum(data)
+	expectedHex := hex.EncodeToString(expected[:])
+
+	actual, err := f.conn.flashMD5(offset, uint32(len(data)))
+	if err != nil {
+		f.logf("Warning: MD5 verification failed: %v", err)
+		return nil // Don't fail on MD5 check failure
+	}
+
+	actualHex := hex.EncodeToString(actual)
+	if actualHex != expectedHex {
+		return fmt.Errorf("MD5 mismatch: expected %s, got %s", expectedHex, actualHex)
+	}
+
+	f.logf("MD5 verified: %s", actualHex)
+	return nil
+}
+
+// EraseFlash erases the entire flash memory.
+// This operation can take a significant amount of time (30-120 seconds).
+// Requires the stub loader to be running.
+func (f *Flasher) EraseFlash() error {
+	if !f.conn.isStub {
+		return &UnsupportedCommandError{Command: "erase flash (requires stub)"}
+	}
+
+	f.logf("Erasing entire flash...")
+	if err := f.conn.eraseFlash(); err != nil {
+		return err
+	}
+	f.logf("Flash erased.")
+	return nil
+}
+
+// EraseRegion erases a region of flash memory.
+// Both offset and size must be aligned to the flash sector size (4096 bytes).
+func (f *Flasher) EraseRegion(offset, size uint32) error {
+	if offset%flashSectorSize != 0 {
+		return fmt.Errorf("offset 0x%X is not aligned to sector size 0x%X", offset, flashSectorSize)
+	}
+	if size%flashSectorSize != 0 {
+		return fmt.Errorf("size 0x%X is not aligned to sector size 0x%X", size, flashSectorSize)
+	}
+
+	f.logf("Erasing %d bytes at 0x%08X...", size, offset)
+	return f.conn.eraseRegion(offset, size)
+}
+
+// ReadRegister reads a 32-bit register from the device.
+func (f *Flasher) ReadRegister(addr uint32) (uint32, error) {
+	return f.conn.readReg(addr)
+}
+
+// WriteRegister writes a 32-bit value to a register on the device.
+func (f *Flasher) WriteRegister(addr, value uint32) error {
+	return f.conn.writeReg(addr, value, 0xFFFFFFFF, 0)
+}
+
+// Reset performs a hard reset of the device, causing it to run user code.
+func (f *Flasher) Reset() {
+	// Try to cleanly exit the stub/rom loader
+	f.conn.flashBegin(0, 0, false) //nolint:errcheck
+	f.conn.flashEnd(true)          //nolint:errcheck
+	time.Sleep(50 * time.Millisecond)
+
+	hardReset(f.port, false)
+	f.logf("Device reset.")
+}
+
+// attachFlash attaches the SPI flash and configures parameters.
+func (f *Flasher) attachFlash() error {
+	f.logf("Attaching SPI flash...")
+
+	if err := f.conn.spiAttach(0); err != nil {
+		return err
+	}
+
+	// Configure flash parameters for common 4MB flash
+	// These defaults work for most development boards
+	err := f.conn.spiSetParams(
+		4*1024*1024, // 4MB total
+		64*1024,     // 64KB block
+		4*1024,      // 4KB sector
+		256,         // 256B page
+	)
+	if err != nil {
+		// Don't fail - some ROM versions don't support this
+		f.logf("Warning: SPI params config failed (may be OK): %v", err)
+	}
+
+	return nil
+}
+
+// changeBaud switches to a higher baud rate for faster data transfer.
+func (f *Flasher) changeBaud(newBaud int) error {
+	f.logf("Switching to %d baud...", newBaud)
+
+	oldBaud := uint32(f.opts.BaudRate)
+	if err := f.conn.changeBaud(uint32(newBaud), oldBaud); err != nil {
+		return err
+	}
+
+	// Change the local port baud rate
+	time.Sleep(50 * time.Millisecond)
+	if err := f.port.SetMode(&serial.Mode{
+		BaudRate: newBaud,
+		Parity:   serial.NoParity,
+		DataBits: 8,
+		StopBits: serial.OneStopBit,
+	}); err != nil {
+		return fmt.Errorf("set local baud rate: %w", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	f.conn.flushInput()
+
+	f.logf("Running at %d baud.", newBaud)
+	return nil
+}
+
+// compressData compresses data using zlib (best compression).
+func compressData(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w, err := zlib.NewWriterLevel(&buf, zlib.BestCompression)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := w.Write(data); err != nil {
+		w.Close() //nolint:errcheck
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// logf logs a message if a logger is configured.
+func (f *Flasher) logf(format string, args ...interface{}) {
+	if f.opts.Logger != nil {
+		f.opts.Logger.Logf(format, args...)
+	}
+}
+
+// FlashID reads the SPI flash chip manufacturer and device ID.
+// Returns (manufacturer_id, device_id, error).
+func (f *Flasher) FlashID() (uint8, uint16, error) {
+	if err := f.attachFlash(); err != nil {
+		return 0, 0, err
+	}
+
+	// SPIFLASH_RDID command (0x9F) via run_spiflash_command
+	// For simplicity, we read it via the SPI registers
+	flashID, err := f.runSPIFlashCommand(0x9F, nil, 24)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	mfgID := uint8(flashID & 0xFF)
+	devID := uint16(((flashID >> 16) & 0xFF) | ((flashID>>8)&0xFF)<<8)
+
+	return mfgID, devID, nil
+}
+
+// runSPIFlashCommand executes a SPI flash command at the register level.
+func (f *Flasher) runSPIFlashCommand(cmd byte, data []byte, readBits int) (uint32, error) {
+	if f.chip == nil {
+		return 0, fmt.Errorf("chip not detected")
+	}
+
+	base := f.chip.SPIRegBase
+	spiUSRReg := base + f.chip.SPIUSROffs
+	spiUSR2Reg := base + f.chip.SPIUSR2Offs
+	spiW0Reg := base + f.chip.SPIW0Offs
+	spiCMDReg := base // CMD reg is at base
+
+	const (
+		spiUSRCommand = 1 << 31
+		spiUSRMISO    = 1 << 28
+		spiUSRMOSI    = 1 << 27
+		spiCMDUSR     = 1 << 18
+	)
+
+	// Save old SPI register values
+	oldSPIUSR, _ := f.conn.readReg(spiUSRReg)
+	oldSPIUSR2, _ := f.conn.readReg(spiUSR2Reg)
+
+	flags := uint32(spiUSRCommand)
+	if readBits > 0 {
+		flags |= spiUSRMISO
+	}
+	if len(data) > 0 {
+		flags |= spiUSRMOSI
+	}
+
+	f.conn.writeReg(spiUSRReg, flags, 0xFFFFFFFF, 0)                //nolint:errcheck
+	f.conn.writeReg(spiUSR2Reg, (7<<28)|uint32(cmd), 0xFFFFFFFF, 0) //nolint:errcheck
+	f.conn.writeReg(spiCMDReg, spiCMDUSR, 0xFFFFFFFF, 0)            //nolint:errcheck
+
+	// Wait for SPI command to complete
+	for i := 0; i < 10; i++ {
+		val, _ := f.conn.readReg(spiCMDReg)
+		if val&spiCMDUSR == 0 {
+			break
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	result, _ := f.conn.readReg(spiW0Reg)
+
+	// Restore SPI registers
+	f.conn.writeReg(spiUSRReg, oldSPIUSR, 0xFFFFFFFF, 0)   //nolint:errcheck
+	f.conn.writeReg(spiUSR2Reg, oldSPIUSR2, 0xFFFFFFFF, 0) //nolint:errcheck
+
+	return result, nil
+}
+
+// StdoutLogger is a simple Logger implementation that writes to an io.Writer.
+type StdoutLogger struct {
+	W io.Writer
+}
+
+// Logf implements the Logger interface.
+func (l *StdoutLogger) Logf(format string, args ...interface{}) {
+	fmt.Fprintf(l.W, format+"\n", args...)
+}
