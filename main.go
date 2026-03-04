@@ -33,6 +33,7 @@ func main() {
 	flashFreq := flag.String("ff", "keep", "Flash frequency: keep, 80m, 40m, 26m, 20m (chip-specific)")
 	flashSize := flag.String("fs", "keep", "Flash size: keep, 1MB, 2MB, 4MB, 8MB, 16MB")
 	resetMode := flag.String("reset", "default", "Reset mode: default, no-reset, usb-jtag")
+	version := flag.Bool("version", false, "Print version and exit")
 
 	// Multi-image mode
 	bootloader := flag.String("bootloader", "", "Bootloader .bin file (multi-image mode)")
@@ -61,6 +62,11 @@ func main() {
 	// pre-process os.Args to move the positional .bin file to the end.
 	reorderArgs()
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("espflash %s\n", espflash.Version)
+		return
+	}
 
 	if *port == "" {
 		fmt.Fprintln(os.Stderr, "Error: -port is required")
