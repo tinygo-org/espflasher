@@ -27,6 +27,7 @@ func main() {
 	flashMode := flag.String("fm", "keep", "Flash mode: keep, qio, qout, dio, dout")
 	flashFreq := flag.String("ff", "keep", "Flash frequency: keep, 80m, 40m, 26m, 20m (chip-specific)")
 	flashSize := flag.String("fs", "keep", "Flash size: keep, 1MB, 2MB, 4MB, 8MB, 16MB")
+	resetMode := flag.String("reset", "default", "Reset mode: default, no-reset, usb-jtag")
 
 	// Multi-image mode
 	bootloader := flag.String("bootloader", "", "Bootloader .bin file (multi-image mode)")
@@ -85,6 +86,16 @@ func main() {
 	opts.FlashMode = *flashMode
 	opts.FlashFreq = *flashFreq
 	opts.FlashSize = *flashSize
+	switch strings.ToLower(*resetMode) {
+	case "default":
+		opts.ResetMode = espflash.ResetDefault
+	case "no-reset":
+		opts.ResetMode = espflash.ResetNoReset
+	case "usb-jtag":
+		opts.ResetMode = espflash.ResetUSBJTAG
+	default:
+		log.Fatalf("Unknown reset mode: %s", *resetMode)
+	}
 
 	fmt.Printf("Connecting to %s...\n", *port)
 	flasher, err := espflash.NewFlasher(*port, opts)

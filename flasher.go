@@ -179,13 +179,14 @@ func (f *Flasher) connect() error {
 
 	for attempt := 0; attempt < attempts; attempt++ {
 		// Reset the chip into bootloader mode
-		if f.opts.ResetMode == ResetDefault {
+		switch f.opts.ResetMode {
+		case ResetDefault:
 			if attempt%2 == 0 {
 				classicReset(f.port, defaultResetDelay)
 			} else {
 				tightReset(f.port, defaultResetDelay+500*time.Millisecond)
 			}
-		} else if f.opts.ResetMode == ResetUSBJTAG {
+		case ResetUSBJTAG:
 			usbJTAGSerialReset(f.port)
 		}
 		// ResetNoReset: skip reset entirely
