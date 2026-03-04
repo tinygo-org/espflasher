@@ -88,12 +88,13 @@ func DefaultOptions() *FlasherOptions {
 // Flasher manages the connection to an ESP device and provides
 // high-level flash operations.
 type Flasher struct {
-	port    serial.Port
-	conn    *conn
-	chip    *chipDef
-	opts    *FlasherOptions
-	isStub  bool
-	portStr string
+	port        serial.Port
+	conn        *conn
+	chip        *chipDef
+	opts        *FlasherOptions
+	isStub      bool
+	portStr     string
+	usesUSBJTAG bool // true if connected via USB-JTAG/Serial peripheral
 }
 
 // NewFlasher creates a new Flasher connected to the given serial port.
@@ -176,17 +177,31 @@ func (f *Flasher) connect() error {
 	}
 
 	var lastErr error
+	var usedUSBJTAGReset bool
 
 	for attempt := 0; attempt < attempts; attempt++ {
-		// Reset the chip into bootloader mode
+		// Reset the chip into bootloader mode.
+		// In default mode, rotate through three strategies:
+		//   - Classic DTR/RTS reset (for external USB-UART bridges)
+		//   - Tight-timing variant (for some Linux serial drivers)
+		//   - USB-JTAG/Serial reset (for built-in USB-JTAG peripherals
+		//     on ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2)
+		// This ensures both external UART and USB-JTAG connections are tried.
 		if f.opts.ResetMode == ResetDefault {
-			if attempt%2 == 0 {
+			switch attempt % 3 {
+			case 0:
 				classicReset(f.port, defaultResetDelay)
-			} else {
+				usedUSBJTAGReset = false
+			case 1:
 				tightReset(f.port, defaultResetDelay+500*time.Millisecond)
+				usedUSBJTAGReset = false
+			case 2:
+				usbJTAGSerialReset(f.port)
+				usedUSBJTAGReset = true
 			}
 		} else if f.opts.ResetMode == ResetUSBJTAG {
 			usbJTAGSerialReset(f.port)
+			usedUSBJTAGReset = true
 		}
 		// ResetNoReset: skip reset entirely
 
@@ -206,6 +221,7 @@ func (f *Flasher) connect() error {
 	return &SyncError{Attempts: attempts}
 
 synced:
+	f.usesUSBJTAG = usedUSBJTAGReset
 	f.logf("Connected.")
 
 	// Detect chip type
@@ -649,7 +665,15 @@ func (f *Flasher) Reset() {
 	f.conn.flashEnd(true)          //nolint:errcheck
 	time.Sleep(50 * time.Millisecond)
 
-	hardReset(f.port, false)
+	hardReset(f.port, f.usesUSBJTAG)
+
+	// Ensure clean signal state before the port is closed.
+	// On Windows, DTR/RTS may remain latched after port close, which
+	// can prevent the chip from booting normally or from being reset
+	// into bootloader mode on the next flash attempt.
+	f.port.SetDTR(false) //nolint:errcheck
+	f.port.SetRTS(false) //nolint:errcheck
+
 	f.logf("Device reset.")
 }
 

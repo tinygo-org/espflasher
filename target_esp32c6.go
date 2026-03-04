@@ -31,6 +31,7 @@ var defESP32C6 = &chipDef{
 	SupportsEncryptedFlash: true,
 	ROMHasCompressedFlash:  true,
 	ROMHasChangeBaud:       true,
+	HasUSBJTAG:             true,
 
 	FlashFrequency: map[string]byte{
 		"80m": 0x0, // workaround for wrong mspi HS div value in ROM

@@ -101,13 +101,26 @@ func usbJTAGSerialReset(port serial.Port) {
 }
 
 // hardReset performs a hardware reset (chip restarts and runs user code).
+//
+// For USB-JTAG/Serial connections (ESP32-S3, ESP32-C3, etc.), the sequence
+// uses longer delays to allow USB device re-enumeration, and starts from a
+// known-clean signal state. This is critical on Windows where USB CDC-ACM
+// drivers need additional time and may latch DTR/RTS state.
 func hardReset(port serial.Port, usesUSB bool) {
-	port.SetRTS(true) //nolint:errcheck
 	if usesUSB {
-		time.Sleep(200 * time.Millisecond)
+		// USB-JTAG/Serial: ensure clean state, then toggle reset with
+		// sufficient delays for USB re-enumeration (especially on Windows).
 		port.SetRTS(false) //nolint:errcheck
-		time.Sleep(200 * time.Millisecond)
+		port.SetDTR(false) //nolint:errcheck
+		time.Sleep(100 * time.Millisecond)
+
+		port.SetRTS(true) //nolint:errcheck
+		time.Sleep(100 * time.Millisecond)
+
+		port.SetRTS(false)                 //nolint:errcheck
+		time.Sleep(200 * time.Millisecond) // Allow USB re-enumeration
 	} else {
+		port.SetRTS(true) //nolint:errcheck
 		time.Sleep(100 * time.Millisecond)
 		port.SetRTS(false) //nolint:errcheck
 	}

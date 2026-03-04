@@ -99,6 +99,13 @@ type chipDef struct {
 	// CHANGE_BAUD command (0x0F). ESP32+ ROMs support this; ESP8266 does not.
 	ROMHasChangeBaud bool
 
+	// HasUSBJTAG indicates the chip has a built-in USB-JTAG/Serial
+	// peripheral that may be used as the serial connection for flashing.
+	// When connected via USB-JTAG (ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2),
+	// different reset sequences are needed because DTR/RTS don't directly
+	// control GPIO0 and EN as they do with external USB-UART bridges.
+	HasUSBJTAG bool
+
 	// SPIMISODLenOffs is the register offset for the MISO data bit length
 	// register (relative to SPIRegBase). On ESP32-S2 and newer, MISO/MOSI
 	// lengths are in dedicated registers. On ESP8266 and ESP32, these are 0

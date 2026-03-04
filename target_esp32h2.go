@@ -31,6 +31,7 @@ var defESP32H2 = &chipDef{
 	SupportsEncryptedFlash: true,
 	ROMHasCompressedFlash:  true,
 	ROMHasChangeBaud:       true,
+	HasUSBJTAG:             true,
 
 	FlashFrequency: map[string]byte{
 		"48m": 0xF,
