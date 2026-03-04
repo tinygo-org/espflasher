@@ -19,6 +19,8 @@ A Go command-line tool and library for flashing firmware to Espressif ESP8266 an
 
 ### Installation
 
+You can download and install one of the prebuilt binaries for your operating system under "Releases" or install from source:
+
 ```bash
 go install tinygo.org/x/espflash@latest
 ```
