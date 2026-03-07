@@ -1,4 +1,4 @@
-package espflash
+package espflasher
 
 // ESP8266 target definition.
 // Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp8266.py

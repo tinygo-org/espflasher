@@ -1,4 +1,4 @@
-package espflash
+package espflasher
 
 // ESP32 target definition.
 // Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32.py

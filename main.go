@@ -1,14 +1,14 @@
-// Command espflash flashes firmware to Espressif ESP8266 and ESP32-family
+// Command espflasher flashes firmware to Espressif ESP8266 and ESP32-family
 // microcontrollers over a serial (UART) connection.
 //
 // Install:
 //
-//	go install tinygo.org/x/espflash@latest
+//	go install tinygo.org/x/espflasher@latest
 //
 // Usage:
 //
-//	espflash -port /dev/ttyUSB0 -offset 0x0 firmware.bin
-//	espflash -port /dev/ttyUSB0 -bootloader bootloader.bin -partitions partitions.bin -app app.bin
+//	espflasher -port /dev/ttyUSB0 -offset 0x0 firmware.bin
+//	espflasher -port /dev/ttyUSB0 -bootloader bootloader.bin -partitions partitions.bin -app app.bin
 package main
 
 import (
@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"strings"
 
-	"tinygo.org/x/espflash/pkg/espflash"
+	"tinygo.org/x/espflasher/pkg/espflasher"
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		fmt.Printf("espflash %s\n", espflash.Version)
+		fmt.Printf("espflasher %s\n", espflasher.Version)
 		return
 	}
 
@@ -89,27 +89,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	opts := espflash.DefaultOptions()
+	opts := espflasher.DefaultOptions()
 	opts.FlashBaudRate = *baud
 	opts.Compress = !*noCompress
-	opts.Logger = &espflash.StdoutLogger{W: os.Stdout}
+	opts.Logger = &espflasher.StdoutLogger{W: os.Stdout}
 	opts.ChipType = parseChipType(*chip)
 	opts.FlashMode = *flashMode
 	opts.FlashFreq = *flashFreq
 	opts.FlashSize = *flashSize
 	switch strings.ToLower(*resetMode) {
 	case "default":
-		opts.ResetMode = espflash.ResetDefault
+		opts.ResetMode = espflasher.ResetDefault
 	case "no-reset":
-		opts.ResetMode = espflash.ResetNoReset
+		opts.ResetMode = espflasher.ResetNoReset
 	case "usb-jtag":
-		opts.ResetMode = espflash.ResetUSBJTAG
+		opts.ResetMode = espflasher.ResetUSBJTAG
 	default:
 		log.Fatalf("Unknown reset mode: %s", *resetMode)
 	}
 
 	fmt.Printf("Connecting to %s...\n", *port)
-	flasher, err := espflash.NewFlasher(*port, opts)
+	flasher, err := espflasher.New(*port, opts)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
@@ -148,7 +148,7 @@ func main() {
 			log.Fatalf("Flash failed: %v", err)
 		}
 	} else {
-		var images []espflash.ImagePart
+		var images []espflasher.ImagePart
 
 		if *bootloader != "" {
 			data, err := os.ReadFile(*bootloader)
@@ -160,7 +160,7 @@ func main() {
 				// Use chip-specific default
 				off = 0x1000 // Most common default
 			}
-			images = append(images, espflash.ImagePart{Data: data, Offset: off})
+			images = append(images, espflasher.ImagePart{Data: data, Offset: off})
 			fmt.Printf("Bootloader: %s (%d bytes) at 0x%08X\n", *bootloader, len(data), off)
 		}
 
@@ -170,7 +170,7 @@ func main() {
 				log.Fatalf("Read partitions: %v", err)
 			}
 			off := parseHex(*partitionsOffset)
-			images = append(images, espflash.ImagePart{Data: data, Offset: off})
+			images = append(images, espflasher.ImagePart{Data: data, Offset: off})
 			fmt.Printf("Partitions: %s (%d bytes) at 0x%08X\n", *partitions, len(data), off)
 		}
 
@@ -180,7 +180,7 @@ func main() {
 				log.Fatalf("Read app: %v", err)
 			}
 			off := parseHex(*appOffset)
-			images = append(images, espflash.ImagePart{Data: data, Offset: off})
+			images = append(images, espflasher.ImagePart{Data: data, Offset: off})
 			fmt.Printf("App: %s (%d bytes) at 0x%08X\n", *app, len(data), off)
 		}
 
@@ -207,29 +207,29 @@ func parseHex(s string) uint32 {
 	return uint32(val)
 }
 
-func parseChipType(s string) espflash.ChipType {
+func parseChipType(s string) espflasher.ChipType {
 	switch strings.ToLower(s) {
 	case "auto":
-		return espflash.ChipAuto
+		return espflasher.ChipAuto
 	case "esp8266":
-		return espflash.ChipESP8266
+		return espflasher.ChipESP8266
 	case "esp32":
-		return espflash.ChipESP32
+		return espflasher.ChipESP32
 	case "esp32s2", "esp32-s2":
-		return espflash.ChipESP32S2
+		return espflasher.ChipESP32S2
 	case "esp32s3", "esp32-s3":
-		return espflash.ChipESP32S3
+		return espflasher.ChipESP32S3
 	case "esp32c2", "esp32-c2":
-		return espflash.ChipESP32C2
+		return espflasher.ChipESP32C2
 	case "esp32c3", "esp32-c3":
-		return espflash.ChipESP32C3
+		return espflasher.ChipESP32C3
 	case "esp32c6", "esp32-c6":
-		return espflash.ChipESP32C6
+		return espflasher.ChipESP32C6
 	case "esp32h2", "esp32-h2":
-		return espflash.ChipESP32H2
+		return espflasher.ChipESP32H2
 	default:
 		log.Fatalf("Unknown chip type: %s", s)
-		return espflash.ChipAuto
+		return espflasher.ChipAuto
 	}
 }
 
@@ -237,7 +237,7 @@ func parseChipType(s string) espflash.ChipType {
 // a flag) to the end of os.Args so that Go's flag package can parse all flags
 // regardless of where they appear on the command line. This lets users write:
 //
-//	espflash -port COM3 firmware.bin -fm dout
+//	espflasher -port COM3 firmware.bin -fm dout
 //
 // instead of requiring all flags before the positional argument.
 func reorderArgs() {

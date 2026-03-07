@@ -1,12 +1,12 @@
-package espflash
+package espflasher
 
-// ESP32-C2 (ESP8684) target definition.
-// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c2.py
+// ESP32-H2 target definition.
+// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32h2.py
 
-var defESP32C2 = &chipDef{
-	ChipType:       ChipESP32C2,
-	Name:           "ESP32-C2",
-	ImageChipID:    12,
+var defESP32H2 = &chipDef{
+	ChipType:       ChipESP32H2,
+	Name:           "ESP32-H2",
+	ImageChipID:    16,
 	UsesMagicValue: false, // Uses chip ID
 
 	SPIRegBase:  0x60002000,
@@ -33,10 +33,10 @@ var defESP32C2 = &chipDef{
 	ROMHasChangeBaud:       true,
 
 	FlashFrequency: map[string]byte{
-		"60m": 0xF,
-		"30m": 0x0,
-		"20m": 0x1,
-		"15m": 0x2,
+		"48m": 0xF,
+		"24m": 0x0,
+		"16m": 0x1,
+		"12m": 0x2,
 	},
 
 	FlashSizes: defaultFlashSizes(),

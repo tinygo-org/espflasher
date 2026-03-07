@@ -1,4 +1,4 @@
-package espflash
+package espflasher
 
 import (
 	"bytes"
@@ -96,7 +96,7 @@ type Flasher struct {
 	portStr string
 }
 
-// NewFlasher creates a new Flasher connected to the given serial port.
+// New creates a new Flasher connected to the given serial port.
 //
 // It opens the serial port, enters the bootloader, syncs with the device,
 // and detects the chip type. On success, the Flasher is ready for flash
@@ -106,12 +106,12 @@ type Flasher struct {
 //
 // Example:
 //
-//	f, err := espflash.NewFlasher("/dev/ttyUSB0", nil)
+//	f, err := espflasher.New("/dev/ttyUSB0", nil)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer f.Close()
-func NewFlasher(portName string, opts *FlasherOptions) (*Flasher, error) {
+func New(portName string, opts *FlasherOptions) (*Flasher, error) {
 	if opts == nil {
 		opts = DefaultOptions()
 	}
@@ -355,7 +355,7 @@ func (f *Flasher) FlashImage(data []byte, offset uint32, progress ProgressFunc) 
 //
 // Example:
 //
-//	images := []espflash.ImagePart{
+//	images := []espflasher.ImagePart{
 //	    {Data: bootloader, Offset: 0x1000},
 //	    {Data: partTable, Offset: 0x8000},
 //	    {Data: app, Offset: 0x10000},

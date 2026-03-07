@@ -1,6 +1,6 @@
-# espflash
+# espflasher
 
-[![Test](https://github.com/tinygo-org/espflash/actions/workflows/test.yml/badge.svg)](https://github.com/tinygo-org/espflash/actions/workflows/test.yml)
+[![Test](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml/badge.svg)](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml)
 
 A Go command-line tool and library for flashing firmware to Espressif ESP8266 and ESP32-family microcontrollers over a serial (UART) connection.
 
@@ -22,29 +22,29 @@ A Go command-line tool and library for flashing firmware to Espressif ESP8266 an
 You can download and install one of the prebuilt binaries for your operating system under "Releases" or install from source:
 
 ```bash
-go install tinygo.org/x/espflash@latest
+go install tinygo.org/x/espflasher@latest
 ```
 
 ### CLI Usage
 
 ```bash
 # Install
-go install tinygo.org/x/espflash@latest
+go install tinygo.org/x/espflasher@latest
 
 # Flash a single binary
-espflash -port /dev/ttyUSB0 firmware.bin
+espflasher -port /dev/ttyUSB0 firmware.bin
 
 # Flash with specific offset and chip
-espflash -port /dev/ttyUSB0 -offset 0x10000 -chip esp32s3 app.bin
+espflasher -port /dev/ttyUSB0 -offset 0x10000 -chip esp32s3 app.bin
 
 # Flash multiple images (bootloader + partitions + app)
-espflash -port /dev/ttyUSB0 \
+espflasher -port /dev/ttyUSB0 \
     -bootloader bootloader.bin \
     -partitions partitions.bin \
     -app application.bin
 
 # Erase flash before writing
-espflash -port /dev/ttyUSB0 -erase-all firmware.bin
+espflasher -port /dev/ttyUSB0 -erase-all firmware.bin
 ```
 
 ## Library
@@ -52,7 +52,7 @@ espflash -port /dev/ttyUSB0 -erase-all firmware.bin
 ### Installation
 
 ```bash
-go get tinygo.org/x/espflash/pkg/espflash
+go get tinygo.org/x/espflasher/pkg/espflasher
 ```
 
 ### Quick Start
@@ -65,12 +65,12 @@ import (
     "log"
     "os"
 
-    "tinygo.org/x/espflash/pkg/espflash"
+    "tinygo.org/x/espflasher/pkg/espflasher"
 )
 
 func main() {
     // Connect to the ESP device
-    flasher, err := espflash.NewFlasher("/dev/ttyUSB0", nil)
+    flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -115,14 +115,14 @@ func main() {
 
 ```go
 // With default options (115200 baud, auto-detect, compressed)
-flasher, err := espflash.NewFlasher("/dev/ttyUSB0", nil)
+flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", nil)
 
 // With custom options
-opts := espflash.DefaultOptions()
+opts := espflasher.DefaultOptions()
 opts.FlashBaudRate = 921600
-opts.ChipType = espflash.ChipESP32S3
-opts.Logger = &espflash.StdoutLogger{W: os.Stdout}
-flasher, err := espflash.NewFlasher("/dev/ttyUSB0", opts)
+opts.ChipType = espflasher.ChipESP32S3
+opts.Logger = &espflasher.StdoutLogger{W: os.Stdout}
+flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", opts)
 ```
 
 ### Flashing a Single Binary
@@ -135,7 +135,7 @@ err := flasher.FlashImage(data, 0x0, progressCallback)
 ### Flashing Multiple Images
 
 ```go
-images := []espflash.ImagePart{
+images := []espflasher.ImagePart{
     {Data: bootloaderBin, Offset: 0x1000},
     {Data: partitionsBin, Offset: 0x8000},
     {Data: applicationBin, Offset: 0x10000},
@@ -165,11 +165,11 @@ The library is organized in layers:
 
 | Layer | File(s) | Description |
 |-------|---------|-------------|
-| SLIP | `pkg/espflash/slip.go` | Serial Line Internet Protocol framing |
-| Protocol | `pkg/espflash/protocol.go` | ROM bootloader command/response protocol |
-| Chip | `pkg/espflash/chip.go`, `pkg/espflash/target_*.go` | Per-target definitions and detection |
-| Reset | `pkg/espflash/reset.go` | Hardware reset strategies |
-| Flasher | `pkg/espflash/flasher.go` | High-level flash/verify/reset API |
+| SLIP | `pkg/espflasher/slip.go` | Serial Line Internet Protocol framing |
+| Protocol | `pkg/espflasher/protocol.go` | ROM bootloader command/response protocol |
+| Chip | `pkg/espflasher/chip.go`, `pkg/espflasher/target_*.go` | Per-target definitions and detection |
+| Reset | `pkg/espflasher/reset.go` | Hardware reset strategies |
+| Flasher | `pkg/espflasher/flasher.go` | High-level flash/verify/reset API |
 | CLI | `main.go` | Command-line interface |
 
 ## Protocol Reference
