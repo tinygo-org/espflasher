@@ -1,4 +1,4 @@
-package espflash
+package espflasher
 
 import (
 "bytes"

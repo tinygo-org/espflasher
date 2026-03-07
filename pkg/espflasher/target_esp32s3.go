@@ -1,13 +1,13 @@
-package espflash
+package espflasher
 
-// ESP32-H2 target definition.
-// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32h2.py
+// ESP32-S3 target definition.
+// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32s3.py
 
-var defESP32H2 = &chipDef{
-	ChipType:       ChipESP32H2,
-	Name:           "ESP32-H2",
-	ImageChipID:    16,
-	UsesMagicValue: false, // Uses chip ID
+var defESP32S3 = &chipDef{
+	ChipType:       ChipESP32S3,
+	Name:           "ESP32-S3",
+	ImageChipID:    9,
+	UsesMagicValue: false, // Uses chip ID, not magic value
 
 	SPIRegBase:  0x60002000,
 	SPIUSROffs:  0x18,
@@ -33,10 +33,9 @@ var defESP32H2 = &chipDef{
 	ROMHasChangeBaud:       true,
 
 	FlashFrequency: map[string]byte{
-		"48m": 0xF,
-		"24m": 0x0,
-		"16m": 0x1,
-		"12m": 0x2,
+		"80m": 0xF,
+		"40m": 0x0,
+		"20m": 0x2,
 	},
 
 	FlashSizes: defaultFlashSizes(),

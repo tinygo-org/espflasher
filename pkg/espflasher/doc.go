@@ -1,4 +1,4 @@
-// Package espflash provides a Go library for flashing firmware to Espressif
+// Package espflasher provides a Go library for flashing firmware to Espressif
 // ESP8266 and ESP32-family microcontrollers over a serial (UART) connection.
 // It implements the serial bootloader protocol used by the ESP ROM bootloader,
 // supporting the following chip families:
@@ -16,7 +16,7 @@
 //
 // To flash a .bin file to a connected ESP device:
 //
-//	flasher, err := espflash.NewFlasher("/dev/ttyUSB0", nil)
+//	flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", nil)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -41,4 +41,4 @@
 // The protocol uses SLIP framing over serial UART. Commands are sent as
 // request packets with an opcode, and the device responds with status.
 // Flash writes can optionally use zlib-compressed data for faster transfers.
-package espflash
+package espflasher

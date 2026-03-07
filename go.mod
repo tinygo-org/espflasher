@@ -1,4 +1,4 @@
-module tinygo.org/x/espflash
+module tinygo.org/x/espflasher
 
 go 1.22
 

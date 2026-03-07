@@ -1,15 +1,15 @@
-package espflash
+package espflasher
 
-// ESP32-C3 target definition.
-// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c3.py
+// ESP32-C6 target definition.
+// Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c6.py
 
-var defESP32C3 = &chipDef{
-	ChipType:       ChipESP32C3,
-	Name:           "ESP32-C3",
-	ImageChipID:    5,
+var defESP32C6 = &chipDef{
+	ChipType:       ChipESP32C6,
+	Name:           "ESP32-C6",
+	ImageChipID:    13,
 	UsesMagicValue: false, // Uses chip ID
 
-	SPIRegBase:  0x60002000,
+	SPIRegBase:  0x60003000,
 	SPIUSROffs:  0x18,
 	SPIUSR1Offs: 0x1C,
 	SPIUSR2Offs: 0x20,
@@ -33,7 +33,7 @@ var defESP32C3 = &chipDef{
 	ROMHasChangeBaud:       true,
 
 	FlashFrequency: map[string]byte{
-		"80m": 0xF,
+		"80m": 0x0, // workaround for wrong mspi HS div value in ROM
 		"40m": 0x0,
 		"20m": 0x2,
 	},
