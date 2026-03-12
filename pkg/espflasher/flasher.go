@@ -260,6 +260,7 @@ func (f *Flasher) detectChip() (*chipDef, error) {
 		{0x6F51306F, defESP32C2}, // ESP32-C2
 		{0x1B31506F, defESP32C3}, // ESP32-C3
 		{0x0DA1806F, defESP32C6}, // ESP32-C6
+		{0x2CE0806F, defESP32C6}, // ESP32-C6-LCD-1.47 by Waveshare
 		{0xD7B73E80, defESP32H2}, // ESP32-H2
 		{0x09, defESP32S3},       // ESP32-S3 returns chip_id
 	}

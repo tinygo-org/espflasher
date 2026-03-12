@@ -2,6 +2,8 @@ package espflasher
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"testing"
 )
@@ -253,6 +255,157 @@ func TestDetectFlashSizeNilChip(t *testing.T) {
 	got := f.detectFlashSize()
 	if got != "" {
 		t.Errorf("detectFlashSize() with nil chip = %q, want empty", got)
+	}
+}
+
+// makeReadRegResponse creates a SLIP-encoded response for a readReg command
+// that returns the given 32-bit value.
+func makeReadRegResponse(value uint32) []byte {
+	resp := make([]byte, 10)
+	resp[0] = respDirectionResp
+	resp[1] = cmdReadReg
+	binary.LittleEndian.PutUint16(resp[2:4], 2) // data len = 2 (status bytes)
+	binary.LittleEndian.PutUint32(resp[4:8], value)
+	resp[8] = 0x00 // status OK
+	resp[9] = 0x00 // error 0
+	return slipEncode(resp)
+}
+
+func TestDetectChipOlderChipsByMagic(t *testing.T) {
+	tests := []struct {
+		name     string
+		magic    uint32
+		wantChip ChipType
+	}{
+		{"ESP8266", 0xFFF0C101, ChipESP8266},
+		{"ESP32", 0x00F01D83, ChipESP32},
+		{"ESP32-S2", 0x000007C6, ChipESP32S2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			respData := makeReadRegResponse(tt.magic)
+			mock := &mockPort{
+				readFunc: func(p []byte) (int, error) {
+					n := copy(p, respData)
+					respData = respData[n:]
+					return n, nil
+				},
+			}
+			c := &conn{
+				port:   mock,
+				reader: newSlipReader(mock),
+			}
+			f := &Flasher{
+				opts: DefaultOptions(),
+				conn: c,
+			}
+
+			def, err := f.detectChip()
+			if err != nil {
+				t.Fatalf("detectChip() error: %v", err)
+			}
+			if def.ChipType != tt.wantChip {
+				t.Errorf("detectChip() = %v, want %v", def.ChipType, tt.wantChip)
+			}
+		})
+	}
+}
+
+func TestDetectChipNewerChipsByMagic(t *testing.T) {
+	tests := []struct {
+		name     string
+		magic    uint32
+		wantChip ChipType
+	}{
+		{"ESP32-C2", 0x6F51306F, ChipESP32C2},
+		{"ESP32-C3", 0x1B31506F, ChipESP32C3},
+		{"ESP32-C6", 0x0DA1806F, ChipESP32C6},
+		{"ESP32-C6-Waveshare", 0x2CE0806F, ChipESP32C6},
+		{"ESP32-H2", 0xD7B73E80, ChipESP32H2},
+		{"ESP32-S3", 0x09, ChipESP32S3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			respData := makeReadRegResponse(tt.magic)
+			mock := &mockPort{
+				readFunc: func(p []byte) (int, error) {
+					n := copy(p, respData)
+					respData = respData[n:]
+					return n, nil
+				},
+			}
+			c := &conn{
+				port:   mock,
+				reader: newSlipReader(mock),
+			}
+			f := &Flasher{
+				opts: DefaultOptions(),
+				conn: c,
+			}
+
+			def, err := f.detectChip()
+			if err != nil {
+				t.Fatalf("detectChip() error: %v", err)
+			}
+			if def.ChipType != tt.wantChip {
+				t.Errorf("detectChip() = %v, want %v", def.ChipType, tt.wantChip)
+			}
+		})
+	}
+}
+
+func TestDetectChipUnknownMagic(t *testing.T) {
+	respData := makeReadRegResponse(0xDEADBEEF)
+	mock := &mockPort{
+		readFunc: func(p []byte) (int, error) {
+			n := copy(p, respData)
+			respData = respData[n:]
+			return n, nil
+		},
+	}
+	c := &conn{
+		port:   mock,
+		reader: newSlipReader(mock),
+	}
+	f := &Flasher{
+		opts: DefaultOptions(),
+		conn: c,
+	}
+
+	_, err := f.detectChip()
+	if err == nil {
+		t.Fatal("detectChip() should return error for unknown magic")
+	}
+
+	var chipErr *ChipDetectError
+	if !errors.As(err, &chipErr) {
+		t.Fatalf("expected ChipDetectError, got %T: %v", err, err)
+	}
+	if chipErr.MagicValue != 0xDEADBEEF {
+		t.Errorf("ChipDetectError.MagicValue = 0x%08X, want 0xDEADBEEF", chipErr.MagicValue)
+	}
+}
+
+func TestDetectChipReadRegError(t *testing.T) {
+	mock := &mockPort{
+		readFunc: func(p []byte) (int, error) {
+			return 0, errors.New("serial port disconnected")
+		},
+	}
+	c := &conn{
+		port:   mock,
+		reader: newSlipReader(mock),
+	}
+	f := &Flasher{
+		opts: DefaultOptions(),
+		conn: c,
+	}
+
+	_, err := f.detectChip()
+	if err == nil {
+		t.Fatal("detectChip() should return error when readReg fails")
 	}
 }
 

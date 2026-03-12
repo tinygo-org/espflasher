@@ -13,6 +13,7 @@ A Go command-line tool and library for flashing firmware to Espressif ESP8266 an
 - ESP32-C2 (ESP8684)
 - ESP32-C3
 - ESP32-C6
+- ESP32-C6-LCD-1.47 by Waveshare
 - ESP32-H2
 
 ## CLI Tool
