@@ -12,6 +12,7 @@ const (
 	ChipESP32S3
 	ChipESP32C2
 	ChipESP32C3
+	ChipESP32C5
 	ChipESP32C6
 	ChipESP32H2
 	ChipAuto // Auto-detect chip type
@@ -32,6 +33,8 @@ func (c ChipType) String() string {
 		return "ESP32-C2"
 	case ChipESP32C3:
 		return "ESP32-C3"
+	case ChipESP32C5:
+		return "ESP32-C5"
 	case ChipESP32C6:
 		return "ESP32-C6"
 	case ChipESP32H2:
@@ -128,6 +131,7 @@ var chipDefs = map[ChipType]*chipDef{
 	ChipESP32S3: defESP32S3,
 	ChipESP32C2: defESP32C2,
 	ChipESP32C3: defESP32C3,
+	ChipESP32C5: defESP32C5,
 	ChipESP32C6: defESP32C6,
 	ChipESP32H2: defESP32H2,
 }
