@@ -123,8 +123,20 @@ func (c *conn) sendCommand(opcode byte, data []byte, chk uint32) error {
 	copy(pkt[8:], data)
 
 	frame := slipEncode(pkt)
-	_, err := c.port.Write(frame)
-	return err
+
+	// Write in chunks for USB CDC compatibility. Large single writes can
+	// overwhelm the ROM bootloader's CDC implementation on chips like ESP32-S3.
+	const chunkSize = 64
+	for i := 0; i < len(frame); i += chunkSize {
+		end := i + chunkSize
+		if end > len(frame) {
+			end = len(frame)
+		}
+		if _, err := c.port.Write(frame[i:end]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // commandResponse represents a parsed response from the ESP device.
