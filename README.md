@@ -109,6 +109,7 @@ func main() {
 - **Progress callbacks**: Monitor flash progress in real-time
 - **MD5 verification**: Verifies written data integrity after flashing
 - **Configurable**: Customize baud rate, compression, reset mode, and more
+- **Stubs**: Use stubs for higher-speed downloads and other advanced processor features
 
 ## API Overview
 
