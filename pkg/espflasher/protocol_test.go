@@ -22,7 +22,7 @@ func TestChecksum(t *testing.T) {
 		{
 			name:     "single byte zero",
 			data:     []byte{0x00},
-			expected: checksumMagic ^ 0x00,
+			expected: checksumMagic,
 		},
 		{
 			name:     "single byte 0xFF",

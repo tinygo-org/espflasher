@@ -1051,5 +1051,5 @@ type StdoutLogger struct {
 
 // Logf implements the Logger interface.
 func (l *StdoutLogger) Logf(format string, args ...interface{}) {
-	fmt.Fprintf(l.W, format+"\n", args...)
+	_, _ = fmt.Fprintf(l.W, format+"\n", args...)
 }
