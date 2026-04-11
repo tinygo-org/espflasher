@@ -112,7 +112,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
-	defer flasher.Close()
+	defer func() {
+		if err := flasher.Close(); err != nil {
+			log.Printf("Warning: failed to close flasher: %v", err)
+		}
+	}()
 
 	fmt.Printf("Chip: %s\n", flasher.ChipName())
 

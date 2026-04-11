@@ -174,6 +174,16 @@ The library is organized in layers:
 | Flasher | `pkg/espflasher/flasher.go` | High-level flash/verify/reset API |
 | CLI | `main.go` | Command-line interface |
 
+## Development
+
+### Updating Stubs
+
+The flasher includes pre-compiled bootloader stubs from [esp-flasher-stub](https://github.com/espressif/esp-flasher-stub) releases. To update stubs:
+
+1. Edit `STUB_VERSION` in `tools/update-stubs.sh` to the desired release version
+2. Run `go generate ./pkg/espflasher/...` to download and embed the latest stubs
+3. The `go:generate` directive in `pkg/espflasher/stub.go` will invoke `tools/update-stubs.sh`
+
 ## Protocol Reference
 
 This library implements the ESP serial bootloader protocol as documented by Espressif's [esptool](https://github.com/espressif/esptool). Key protocol features:

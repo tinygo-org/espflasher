@@ -145,7 +145,9 @@ func (r *slipReader) ReadFrame(timeout time.Duration) ([]byte, error) {
 			break
 		}
 		readTimeout := min(remaining, 100*time.Millisecond)
-		r.port.SetReadTimeout(readTimeout) //nolint:errcheck
+		if err := r.port.SetReadTimeout(readTimeout); err != nil {
+			return nil, fmt.Errorf("failed to set read timeout: %w", err)
+		}
 		n, err := r.port.Read(buf)
 		if err != nil && err != io.EOF {
 			if n == 0 {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 )
 
+//go:generate bash ../../tools/update-stubs.sh
 //go:embed stubs
 var stubFS embed.FS
 
