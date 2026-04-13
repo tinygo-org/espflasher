@@ -1,8 +1,8 @@
 # espflasher
 
-[![Test](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml/badge.svg)](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml)
+[![PkgGoDev](https://pkg.go.dev/badge/pkg.go.dev/tinygo.org/x/espflasher)](https://pkg.go.dev/tinygo.org/x/espflasher) [![Test](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml/badge.svg)](https://github.com/tinygo-org/espflasher/actions/workflows/test.yml)
 
-A Go command-line tool and library for flashing firmware to Espressif ESP8266 and ESP32-family microcontrollers over a serial (UART) connection.
+A Go command-line tool and library for flashing firmware to Espressif ESP8266 and ESP32-family microcontrollers over serial (UART) or USB-JTAG/Serial connections.
 
 ## Supported Chips
 
@@ -38,6 +38,9 @@ espflasher -port /dev/ttyUSB0 firmware.bin
 # Flash with specific offset and chip
 espflasher -port /dev/ttyUSB0 -offset 0x10000 -chip esp32s3 app.bin
 
+# Flash via native USB-JTAG/Serial (ESP32-S3, ESP32-C3, etc.)
+espflasher -port /dev/ttyACM0 -reset usb-jtag -chip esp32s3 firmware.bin
+
 # Flash multiple images (bootloader + partitions + app)
 espflasher -port /dev/ttyUSB0 \
     -bootloader bootloader.bin \
@@ -71,7 +74,7 @@ import (
 
 func main() {
     // Connect to the ESP device
-    flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", nil)
+    flasher, err := espflasher.New("/dev/ttyUSB0", nil)
     if err != nil {
         log.Fatal(err)
     }
@@ -109,7 +112,16 @@ func main() {
 - **Progress callbacks**: Monitor flash progress in real-time
 - **MD5 verification**: Verifies written data integrity after flashing
 - **Configurable**: Customize baud rate, compression, reset mode, and more
+- **USB-JTAG/Serial**: Native USB support for boards like ESP32-S3 and ESP32-C3 that expose a built-in USB-JTAG/Serial interface (typically `/dev/ttyACM0` on Linux, `cu.usbmodem*` on macOS)
 - **Stubs**: Use stubs for higher-speed downloads and other advanced processor features
+
+## Reset Modes
+
+| CLI Flag | Go Constant | Description |
+|----------|-------------|-------------|
+| `default` | `ResetDefault` | Classic DTR/RTS reset sequence. Works with most boards using a USB-to-UART bridge (CP2102, CH340, etc.). |
+| `usb-jtag` | `ResetUSBJTAG` | Reset sequence for boards with a native USB-JTAG/Serial interface (ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2). Use this when connected via `/dev/ttyACM0` (Linux) or `cu.usbmodem*` (macOS). |
+| `no-reset` | `ResetNoReset` | Skip hardware reset entirely. Useful when the chip is already in bootloader mode or reset is handled externally. |
 
 ## API Overview
 
@@ -117,14 +129,18 @@ func main() {
 
 ```go
 // With default options (115200 baud, auto-detect, compressed)
-flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", nil)
+flasher, err := espflasher.New("/dev/ttyUSB0", nil)
 
 // With custom options
 opts := espflasher.DefaultOptions()
 opts.FlashBaudRate = 921600
 opts.ChipType = espflasher.ChipESP32S3
 opts.Logger = &espflasher.StdoutLogger{W: os.Stdout}
-flasher, err := espflasher.NewFlasher("/dev/ttyUSB0", opts)
+flasher, err := espflasher.New("/dev/ttyUSB0", opts)
+
+// For boards with native USB-JTAG/Serial (ESP32-S3, ESP32-C3, etc.)
+opts.ResetMode = espflasher.ResetUSBJTAG
+flasher, err := espflasher.New("/dev/ttyACM0", opts)
 ```
 
 ### Flashing a Single Binary
