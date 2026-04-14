@@ -834,31 +834,18 @@ func (f *Flasher) ReadFlash(offset, size uint32) ([]byte, error) {
 // Reset performs a hard reset of the device, causing it to run user code.
 func (f *Flasher) Reset() {
 	if f.conn.isStub() {
-		// The stub loader needs an explicit flash_begin/flash_end to
-		// cleanly exit flash mode before hardware reset. Use reboot=false
-		// to keep the stub running so the port stays alive for hardReset.
+		// Tell the stub to cleanly exit flash mode and reboot.
+		// flashEnd(true) triggers a software reboot inside the stub.
 		f.conn.flashBegin(0, 0, false) //nolint:errcheck
-		f.conn.flashEnd(false)         //nolint:errcheck
+		f.conn.flashEnd(true)          //nolint:errcheck
 		time.Sleep(50 * time.Millisecond)
 	}
 
+	// For ROM bootloaders, skip flash_begin/flash_end — sending
+	// CMD_FLASH_BEGIN after a compressed download may interfere with
+	// the flash controller state at offset 0.
 	if f.usesUSB {
-		// On USB-JTAG/Serial, hardReset's SetRTS(true) pulls EN low while
-		// USB is still connected. During the 200ms sleep the chip resets
-		// and USB disconnects. The subsequent SetRTS(false) may block on
-		// the dead cdc_acm fd. Run in a goroutine and close the port
-		// after a timeout so the kernel releases the tty device node.
-		done := make(chan struct{})
-		go func() {
-			hardReset(f.port, true)
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(500 * time.Millisecond):
-		}
-		f.port.Close() //nolint:errcheck
-		<-done         // wait for goroutine to finish after fd closed
+		hardResetUSB(f.port)
 	} else {
 		hardReset(f.port, false)
 	}
