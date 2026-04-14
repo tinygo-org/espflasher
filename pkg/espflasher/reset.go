@@ -2,7 +2,6 @@ package espflasher
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"go.bug.st/serial"
@@ -131,17 +130,6 @@ func hardReset(port serial.Port, usesUSB bool) {
 		time.Sleep(100 * time.Millisecond)
 		port.SetRTS(false) //nolint:errcheck
 	}
-}
-
-// isNativeUSBPort returns true if the port path looks like a CDC ACM device
-// (native USB) rather than a USB-UART bridge. On native USB connections,
-// DTR/RTS ioctls after a chip reset will block because the USB device
-// disconnects, so a different reset strategy is needed.
-func isNativeUSBPort(portName string) bool {
-	// Linux: /dev/ttyACM*  (cdc_acm driver)
-	// macOS: /dev/cu.usbmodem*  (AppleUSBCDC driver)
-	return strings.Contains(portName, "ttyACM") ||
-		strings.Contains(portName, "usbmodem")
 }
 
 // String returns the string representation of the ResetMode.
