@@ -252,9 +252,9 @@ The library is organized in layers:
 
 The flasher includes pre-compiled bootloader stubs from [esp-flasher-stub](https://github.com/espressif/esp-flasher-stub) releases. To update stubs:
 
-1. Edit `STUB_VERSION` in `tools/update-stubs.sh` to the desired release version
+1. Edit `stubVersion` in `tools/update-stubs.go` to the desired release version
 2. Run `go generate ./pkg/espflasher/...` to download and embed the latest stubs
-3. The `go:generate` directive in `pkg/espflasher/stub.go` will invoke `tools/update-stubs.sh`
+3. The `go:generate` directive in `pkg/espflasher/stub.go` will invoke `tools/update-stubs.go`
 
 ## Protocol Reference
 
