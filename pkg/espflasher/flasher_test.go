@@ -438,7 +438,7 @@ func TestFlashMD5RequiresStub(t *testing.T) {
 	mock := &mockConnection{}
 	mock.stubMode = false // ROM mode
 	f := &Flasher{conn: mock, chip: chipDefs[ChipESP32]}
-	_, err := f.FlashMD5(0, 1024)
+	_, err := f.GetFlashMD5(0, 1024)
 	if err == nil {
 		t.Fatal("expected error when stub is not running")
 	}

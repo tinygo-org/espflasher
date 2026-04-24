@@ -805,9 +805,9 @@ func (f *Flasher) GetSecurityInfo() (*SecurityInfo, error) {
 	return f.readSecurityInfo()
 }
 
-// FlashMD5 returns the MD5 hash of a flash region.
+// GetFlashMD5 returns the MD5 hash of a flash region.
 // Requires the stub loader to be running.
-func (f *Flasher) FlashMD5(offset, size uint32) (string, error) {
+func (f *Flasher) GetFlashMD5(offset, size uint32) (string, error) {
 	if !f.conn.isStub() {
 		return "", &UnsupportedCommandError{Command: "flash MD5 (requires stub)"}
 	}
