@@ -20,10 +20,11 @@ const (
 // Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c2.py
 
 var defESP32C2 = &chipDef{
-	ChipType:       ChipESP32C2,
-	Name:           "ESP32-C2",
-	ImageChipID:    12,
-	UsesMagicValue: false, // Uses chip ID
+	ChipType:            ChipESP32C2,
+	Name:                "ESP32-C2",
+	ImageChipID:         12,
+	UsesMagicValue:      false, // Uses chip ID
+	FallbackMagicValues: []uint32{0x6F51306F, 0x7C41A06F, 0x0C21E06F},
 
 	SPIRegBase:  0x60002000,
 	SPIUSROffs:  0x18,

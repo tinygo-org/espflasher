@@ -47,10 +47,11 @@ const (
 // Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c3.py
 
 var defESP32C3 = &chipDef{
-	ChipType:       ChipESP32C3,
-	Name:           "ESP32-C3",
-	ImageChipID:    5,
-	UsesMagicValue: false, // Uses chip ID
+	ChipType:            ChipESP32C3,
+	Name:                "ESP32-C3",
+	ImageChipID:         5,
+	UsesMagicValue:      false, // Uses chip ID
+	FallbackMagicValues: []uint32{0x6921506F, 0x1B31506F, 0x4881606F, 0x4361606F},
 
 	SPIRegBase:  0x60002000,
 	SPIUSROffs:  0x18,

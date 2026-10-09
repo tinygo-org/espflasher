@@ -1,6 +1,7 @@
 package espflasher
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -75,6 +76,13 @@ func TestDetectChipByMagic(t *testing.T) {
 		{"ESP8266", 0xFFF0C101, ChipESP8266, true},
 		{"ESP32", 0x00F01D83, ChipESP32, true},
 		{"ESP32-S2", 0x000007C6, ChipESP32S2, true},
+		{"ESP32-C2", 0x7C41A06F, ChipESP32C2, true},
+		{"ESP32-C3 ECO3", 0x1B31506F, ChipESP32C3, true},
+		{"ESP32-C3 ECO7", 0x4361606F, ChipESP32C3, true},
+		{"ESP32-C5", 0x1101406F, ChipESP32C5, true},
+		{"ESP32-C6", 0x2CE0806F, ChipESP32C6, true},
+		{"ESP32-H2", 0xD7B73E80, ChipESP32H2, true},
+		{"ESP32-S3", 0x00000009, ChipESP32S3, true},
 		{"unknown magic", 0xDEADBEEF, 0, false},
 		{"zero magic", 0x00000000, 0, false},
 	}
@@ -278,5 +286,30 @@ func TestSPIDLenRegisters(t *testing.T) {
 		if def.SPIMOSIDLenOffs != 0x24 {
 			t.Errorf("%s SPIMOSIDLenOffs = 0x%X, want 0x24", def.Name, def.SPIMOSIDLenOffs)
 		}
+	}
+}
+
+// TestDetectChipStubRunning checks that a C3 with the stub already running,
+// which rejects GET_SECURITY_INFO, is found by its magic value.
+func TestDetectChipStubRunning(t *testing.T) {
+	mc := &mockConnection{
+		securityInfoFunc: func() ([]byte, error) {
+			return nil, errors.New("command 0x14 failed: status=0xC0")
+		},
+		readRegFunc: func(addr uint32) (uint32, error) {
+			if addr == chipDetectMagicRegAddr {
+				return 0x1B31506F, nil
+			}
+			return 0, nil
+		},
+	}
+	f := &Flasher{conn: mc, opts: &FlasherOptions{}}
+
+	def, err := f.detectChip()
+	if err != nil {
+		t.Fatalf("detectChip() error = %v", err)
+	}
+	if def.ChipType != ChipESP32C3 {
+		t.Errorf("detectChip() = %s, want %s", def.ChipType, ChipESP32C3)
 	}
 }

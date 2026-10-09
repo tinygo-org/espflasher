@@ -24,10 +24,11 @@ const (
 // Reference: https://github.com/espressif/esptool/blob/master/esptool/targets/esp32c5.py
 
 var defESP32C5 = &chipDef{
-	ChipType:       ChipESP32C5,
-	Name:           "ESP32-C5",
-	ImageChipID:    23,
-	UsesMagicValue: false, // Uses chip ID
+	ChipType:            ChipESP32C5,
+	Name:                "ESP32-C5",
+	ImageChipID:         23,
+	UsesMagicValue:      false, // Uses chip ID
+	FallbackMagicValues: []uint32{0x1101406F},
 
 	SPIRegBase:  0x60003000,
 	SPIUSROffs:  0x18,
