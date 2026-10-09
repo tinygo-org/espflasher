@@ -3,6 +3,7 @@ package espflasher
 import (
 	"fmt"
 	"net"
+	"slices"
 )
 
 // ChipType identifies the ESP chip family.
@@ -72,6 +73,11 @@ type chipDef struct {
 	// UsesMagicValue indicates this chip uses the magic register for detection
 	// rather than the chip ID command.
 	UsesMagicValue bool
+
+	// FallbackMagicValues identify a chip ID chip when GET_SECURITY_INFO
+	// fails, e.g. with the stub already running.
+	// Reference: esptool v4.8.1 targets CHIP_DETECT_MAGIC_VALUE.
+	FallbackMagicValues []uint32
 
 	// SPI register base and offsets for flash operations.
 	SPIRegBase  uint32
@@ -184,6 +190,9 @@ var chipDefs = map[ChipType]*chipDef{
 func detectChipByMagic(magic uint32) *chipDef {
 	for _, def := range chipDefs {
 		if def.UsesMagicValue && def.MagicValue == magic {
+			return def
+		}
+		if slices.Contains(def.FallbackMagicValues, magic) {
 			return def
 		}
 	}
