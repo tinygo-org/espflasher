@@ -348,17 +348,27 @@ func (c *conn) sync() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	// The ROM replies with a non-zero value and the stub with 0.
+	// Reference: esptool loader.py sync().
+	stubDetected := resp.Value == 0
 
 	// The ROM bootloader sends up to 7 additional sync responses after the
 	// first one. Drain them by reading frames directly (don't send new
 	// commands). Use a short timeout: the responses should already be in the
 	// serial buffer or arrive within a few milliseconds.
 	for range 7 {
-		if _, err := c.reader.ReadFrame(50 * time.Millisecond); err != nil {
+		frame, err := c.reader.ReadFrame(50 * time.Millisecond)
+		if err != nil {
 			break // no more responses waiting — stop early
+		}
+		if len(frame) >= 8 && frame[0] == respDirectionResp && frame[1] == cmdSync {
+			stubDetected = stubDetected && binary.LittleEndian.Uint32(frame[4:8]) == 0
 		}
 	}
 
+	if stubDetected {
+		c.stub = true
+	}
 	return resp.Value, nil
 }
 

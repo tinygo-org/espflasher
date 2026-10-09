@@ -461,7 +461,10 @@ synced:
 	}
 
 	// Upload the stub loader to enable advanced features (erase, compression, etc.).
-	if f.opts.SkipStub {
+	if f.conn.isStub() {
+		// Reference: esptool loader.py run_stub().
+		f.logf("Stub loader is already running, no upload needed.")
+	} else if f.opts.SkipStub {
 		f.logf("Skipping stub loader (SkipStub set); ROM bootloader only.")
 	} else if s, ok := stubFor(f.chip.ChipType); ok {
 		f.logf("Loading stub loader...")
@@ -478,9 +481,14 @@ synced:
 
 // detectChip identifies the connected ESP chip.
 func (f *Flasher) detectChip() (*chipDef, error) {
-	si, err := f.readSecurityInfo()
-	if err != nil {
-		f.logf("unable to read security info: %s", err)
+	// The stub doesn't support GET_SECURITY_INFO, so use the magic value.
+	var si *SecurityInfo
+	if !f.conn.isStub() {
+		var err error
+		si, err = f.readSecurityInfo()
+		if err != nil {
+			f.logf("unable to read security info: %s", err)
+		}
 	}
 
 	for _, def := range chipDefs {
