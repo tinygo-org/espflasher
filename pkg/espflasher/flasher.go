@@ -1188,10 +1188,7 @@ func (f *Flasher) Reset() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Chips with a chip-specific hard reset (e.g. the ESP32-S2 USB-OTG
-	// watchdog reset) use it here; if it's unavailable or returns false,
-	// fall through to the DTR/RTS toggling below.
-	if f.chip != nil && f.chip.HardResetOTG != nil && f.chip.HardResetOTG(f) {
+	if f.chip != nil && f.chip.HardReset != nil && f.chip.HardReset(f) {
 		f.logf("Device reset.")
 		return
 	}

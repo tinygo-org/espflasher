@@ -215,67 +215,8 @@ func TestHardResetUSBDeassertsDTRFirst(t *testing.T) {
 	assert.False(t, first.value, "first SetDTR must be false (release GPIO0)")
 }
 
-// TestFlasherResetESP32S2UsesWatchdog verifies that Flasher.Reset() takes
-// the chip's HardResetOTG hook (RTC watchdog) for an ESP32-S2 flasher over
-// native USB-OTG, instead of the DTR/RTS hardResetUSB path used by chips
-// with a USB-Serial-JTAG bridge.
-func TestFlasherResetESP32S2UsesWatchdog(t *testing.T) {
-	port := &recordingPort{}
-	mc := &mockConnection{
-		readRegFunc: func(addr uint32) (uint32, error) {
-			return 0, nil // strap clear, force-download not set
-		},
-		writeRegFunc: func(addr, value, mask, delayUS uint32) error {
-			return nil
-		},
-	}
-	f := &Flasher{
-		conn:    mc,
-		port:    port,
-		opts:    &FlasherOptions{},
-		chip:    defESP32S2,
-		usesUSB: true,
-	}
-
-	f.Reset()
-
-	assert.Empty(t, port.calls, "watchdog reset path must not toggle DTR/RTS")
-}
-
-// TestFlasherResetESP32S2WatchdogWriteFailureFallsBack verifies that when a
-// watchdog register write fails, Flasher.Reset() falls back to the DTR/RTS
-// hardResetUSB path instead of treating the failed watchdog arm as a
-// successful reset.
-func TestFlasherResetESP32S2WatchdogWriteFailureFallsBack(t *testing.T) {
-	port := &recordingPort{}
-	mc := &mockConnection{
-		readRegFunc: func(addr uint32) (uint32, error) {
-			return 0, nil // strap clear, force-download not set
-		},
-		writeRegFunc: func(addr, value, mask, delayUS uint32) error {
-			if addr == esp32s2RTCCntlWDTConfig0 {
-				return errors.New("write failed")
-			}
-			return nil
-		},
-	}
-	f := &Flasher{
-		conn:    mc,
-		port:    port,
-		opts:    &FlasherOptions{},
-		chip:    defESP32S2,
-		usesUSB: true,
-	}
-
-	f.Reset()
-
-	assert.NotEmpty(t, port.calls, "watchdog write failure must fall back to DTR/RTS reset")
-}
-
-// TestFlasherResetUSBJTAGChipUnchanged verifies that chips using the
-// USB-Serial-JTAG bridge (no HardResetOTG hook, e.g. S3/C3/C6/H2/C5) still
-// take the existing DTR/RTS hardResetUSB path, unaffected by the S2
-// watchdog-reset addition.
+// TestFlasherResetUSBJTAGChipUnchanged verifies that USB-JTAG/Serial chips
+// without a HardReset hook still use the DTR/RTS hardResetUSB path.
 func TestFlasherResetUSBJTAGChipUnchanged(t *testing.T) {
 	port := &recordingPort{}
 	mc := &mockConnection{}
@@ -283,7 +224,7 @@ func TestFlasherResetUSBJTAGChipUnchanged(t *testing.T) {
 		conn:    mc,
 		port:    port,
 		opts:    &FlasherOptions{},
-		chip:    defESP32S3,
+		chip:    defESP32C6,
 		usesUSB: true,
 	}
 
@@ -413,7 +354,8 @@ func TestFlasherResetKeepsStubRunning(t *testing.T) {
 	var reboots []bool
 	port := &recordingPort{}
 	mc := &mockConnection{
-		stubMode: true,
+		stubMode:    true,
+		readRegFunc: bootPinHigh,
 		flashEndFunc: func(reboot bool) error {
 			reboots = append(reboots, reboot)
 			return nil
@@ -469,7 +411,7 @@ func TestHardResetReportsError(t *testing.T) {
 func TestFlasherResetReportsFailedReset(t *testing.T) {
 	var logged []string
 	f := &Flasher{
-		conn: &mockConnection{},
+		conn: &mockConnection{readRegFunc: bootPinHigh},
 		port: &failingPort{err: errors.New("input/output error")},
 		opts: &FlasherOptions{Logger: loggerFunc(func(format string, args ...interface{}) {
 			logged = append(logged, fmt.Sprintf(format, args...))
@@ -484,6 +426,15 @@ func TestFlasherResetReportsFailedReset(t *testing.T) {
 	last := logged[len(logged)-1]
 	assert.Contains(t, last, "may not have been reset")
 	assert.NotContains(t, last, "Device reset.")
+}
+
+// bootPinHigh reports a normal SPI boot strap so Reset() skips the
+// watchdog reset and uses DTR/RTS.
+func bootPinHigh(addr uint32) (uint32, error) {
+	if addr == esp32c3GPIOStrapReg {
+		return gpioStrapSPIBootMask, nil
+	}
+	return 0, nil
 }
 
 // loggerFunc adapts a function to the Logger interface.

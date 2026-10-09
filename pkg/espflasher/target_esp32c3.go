@@ -20,8 +20,13 @@ const (
 
 	// RTC_CNTL watchdog registers (different offsets from S3).
 	esp32c3RTCCntlWDTConfig0  uint32 = 0x60008090
+	esp32c3RTCCntlWDTConfig1  uint32 = 0x60008094
 	esp32c3RTCCntlWDTWProtect uint32 = 0x600080A8
 	esp32c3RTCCntlWDTWKey     uint32 = 0x50D83AA1
+
+	// GPIO_STRAP bit 3 is GPIO9 on the C3.
+	// Reference: esp-idf components/soc/esp32c3/register/soc/gpio_reg.h
+	esp32c3GPIOStrapReg uint32 = 0x60004038
 
 	// Super Watchdog (SWD) registers.
 	esp32c3RTCCntlSWDConf       uint32 = 0x600080AC
@@ -79,6 +84,7 @@ var defESP32C3 = &chipDef{
 	FlashSizes: defaultFlashSizes(),
 
 	PostConnect: esp32c3PostConnect,
+	HardReset:   esp32c3WatchdogReset.hardReset,
 
 	ForceDownloadBootReg:  esp32c3RTCCntlOption1Reg,
 	ForceDownloadBootMask: esp32c3RTCCntlForceDownloadBoot,
@@ -86,6 +92,17 @@ var defESP32C3 = &chipDef{
 	ReadMAC:          esp32c3ReadMAC,
 	ReadChipRevision: esp32c3ReadChipRevision,
 	ReadChipFeatures: esp32c3ReadChipFeatures,
+}
+
+// esp32c3WatchdogReset exits download mode entered with GPIO9 held low.
+// Reference: esptool/targets/esp32c3.py watchdog_reset().
+var esp32c3WatchdogReset = rtcWDTReset{
+	strapReg:          esp32c3GPIOStrapReg,
+	option1Reg:        esp32c3RTCCntlOption1Reg,
+	forceDownloadMask: esp32c3RTCCntlForceDownloadBoot,
+	wdtWProtect:       esp32c3RTCCntlWDTWProtect,
+	wdtConfig0:        esp32c3RTCCntlWDTConfig0,
+	wdtConfig1:        esp32c3RTCCntlWDTConfig1,
 }
 
 // esp32c3PostConnect detects the USB interface type and disables watchdogs
