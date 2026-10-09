@@ -19,8 +19,11 @@ const (
 	esp32s3RTCCntlForceDownloadBoot uint32 = 0x1
 
 	esp32s3RTCCntlWDTConfig0  uint32 = 0x60008098
+	esp32s3RTCCntlWDTConfig1  uint32 = 0x6000809C
 	esp32s3RTCCntlWDTWProtect uint32 = 0x600080B0
 	esp32s3RTCCntlWDTWKey     uint32 = 0x50D83AA1
+
+	esp32s3GPIOStrapReg uint32 = 0x60004038
 
 	esp32s3RTCCntlSWDConf       uint32 = 0x600080B4
 	esp32s3RTCCntlSWDAutoFeedEn uint32 = 1 << 31
@@ -80,6 +83,7 @@ var defESP32S3 = &chipDef{
 	FlashSizes: defaultFlashSizes(),
 
 	PostConnect: esp32s3PostConnect,
+	HardReset:   esp32s3WatchdogReset.hardReset,
 
 	ForceDownloadBootReg:  esp32s3RTCCntlOption1Reg,
 	ForceDownloadBootMask: esp32s3RTCCntlForceDownloadBoot,
@@ -87,6 +91,17 @@ var defESP32S3 = &chipDef{
 	ReadMAC:          esp32s3ReadMAC,
 	ReadChipRevision: esp32s3ReadChipRevision,
 	ReadChipFeatures: esp32s3ReadChipFeatures,
+}
+
+// esp32s3WatchdogReset exits download mode entered with GPIO0 held low.
+// Reference: esptool/targets/esp32s3.py hard_reset(), extended to USB-JTAG/Serial.
+var esp32s3WatchdogReset = rtcWDTReset{
+	strapReg:          esp32s3GPIOStrapReg,
+	option1Reg:        esp32s3RTCCntlOption1Reg,
+	forceDownloadMask: esp32s3RTCCntlForceDownloadBoot,
+	wdtWProtect:       esp32s3RTCCntlWDTWProtect,
+	wdtConfig0:        esp32s3RTCCntlWDTConfig0,
+	wdtConfig1:        esp32s3RTCCntlWDTConfig1,
 }
 
 // esp32s3PostConnect detects the USB interface type and disables watchdogs

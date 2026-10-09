@@ -136,15 +136,9 @@ type chipDef struct {
 	// May set Flasher fields like usesUSB.
 	PostConnect func(f *Flasher) error
 
-	// HardResetOTG is an optional chip-specific hook tried first by
-	// Flasher.Reset(). It distinguishes chips with a native USB-OTG
-	// peripheral (e.g. ESP32-S2), where the DTR/RTS latch used by
-	// hardResetUSB is a no-op, from chips with a USB-Serial-JTAG bridge
-	// (S3, C3, C6, H2, C5), which still use that latch. It returns true
-	// if it performed the reset; false to fall back to the standard
-	// usesUSB/hardReset path. Nil for chips without a native-OTG reset
-	// mechanism.
-	HardResetOTG func(f *Flasher) bool
+	// HardReset is an optional chip-specific reset tried first by
+	// Flasher.Reset(). It returns false to fall back to the DTR/RTS reset.
+	HardReset func(f *Flasher) bool
 
 	// RTC_CNTL_OPTION1 register and its FORCE_DOWNLOAD_BOOT bit. The bit
 	// survives a reset (RTC domain), so Flasher.Reset clears it or the
