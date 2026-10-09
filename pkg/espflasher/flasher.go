@@ -296,10 +296,19 @@ func (f *Flasher) connectViaUSBJTAG() bool {
 		return false
 	}
 	f.conn.flushInput()
+	return f.trySync()
+}
+
+// trySync tries to sync a few times. A send timeout means the device isn't
+// reading, so more tries on this port won't help.
+func (f *Flasher) trySync() bool {
 	for range 5 {
 		_, err := f.conn.sync()
 		if err == nil {
 			return true
+		}
+		if errors.Is(err, errSendTimeout) {
+			return false
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -342,11 +351,19 @@ func (f *Flasher) connect() error {
 		attempts = 7
 	}
 
+	// UART bridge resets don't enter download mode on USB-Serial/JTAG.
+	// Reference: esptool loader.py _construct_reset_strategy_sequence().
+	resetMode := f.opts.ResetMode
+	if resetMode == ResetDefault && f.usbInterfaceFromPort() == usbInterfaceSerialJTAG {
+		f.logf("USB-JTAG/Serial port detected, using USB-JTAG reset")
+		resetMode = ResetUSBJTAG
+	}
+
 	for attempt := 0; attempt < attempts; attempt++ {
 		f.connectStatus(ConnectPhaseReset, attempt+1, attempts, "entering download mode")
 
 		// Reset the chip into bootloader mode
-		switch f.opts.ResetMode {
+		switch resetMode {
 		case ResetDefault:
 			// On Unix systems (darwin, linux), use the esptool sequence:
 			// unixTightReset with 50ms, then 550ms, then fallback to classic resets
@@ -393,12 +410,8 @@ func (f *Flasher) connect() error {
 		f.connectStatus(ConnectPhaseSync, attempt+1, attempts, "syncing")
 		time.Sleep(100 * time.Millisecond) // Give bootloader time to start
 		f.conn.flushInput()
-		for range 5 {
-			_, err := f.conn.sync()
-			if err == nil {
-				goto synced
-			}
-			time.Sleep(50 * time.Millisecond)
+		if f.trySync() {
+			goto synced
 		}
 
 		// Sync failed — try reopening port (USB CDC may have re-enumerated
@@ -413,12 +426,8 @@ func (f *Flasher) connect() error {
 		// looping back and issuing another reset (which would disconnect
 		// USB all over again).
 		f.conn.flushInput()
-		for range 5 {
-			_, err := f.conn.sync()
-			if err == nil {
-				goto synced
-			}
-			time.Sleep(50 * time.Millisecond)
+		if f.trySync() {
+			goto synced
 		}
 	}
 

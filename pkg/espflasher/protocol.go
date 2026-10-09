@@ -161,25 +161,57 @@ func (c *conn) sendCommand(opcode byte, data []byte, chk uint32) error {
 	copy(pkt[8:], data)
 
 	frame := slipEncode(pkt)
+	done := make(chan func() error, 1)
+	port, usesUSB := c.port, c.usesUSB
+	go func() {
+		// Re-panic on the caller's goroutine so New can close the port.
+		defer func() {
+			if r := recover(); r != nil {
+				done <- func() error { panic(r) }
+			}
+		}()
+		err := writeFrame(port, frame, usesUSB)
+		done <- func() error { return err }
+	}()
+	select {
+	case result := <-done:
+		return result()
+	case <-time.After(sendTimeout(len(frame))):
+		return errSendTimeout
+	}
+}
+
+// errSendTimeout means the device stopped reading, e.g. a reset that left
+// the application running.
+var errSendTimeout = errors.New("timed out sending to device")
+
+// sendTimeout allows time for n bytes at 9600 baud plus one second.
+func sendTimeout(n int) time.Duration {
+	return time.Second + time.Duration(n)*10*time.Second/9600
+}
+
+// writeFrame writes and drains a SLIP frame. Both block forever on a USB CDC
+// port whose device doesn't read, so sendCommand runs this with a timeout.
+func writeFrame(port serial.Port, frame []byte, usesUSB bool) error {
 	// USB CDC endpoints have limited buffer sizes. Writing large SLIP frames
 	// in one shot can overflow the endpoint buffer and cause data loss.
 	// Chunk writes to 64 bytes (standard USB Full Speed bulk endpoint size).
 	// Only use chunking for native USB connections (USB-OTG, USB-JTAG/Serial);
 	// UART bridge connections (CH340, CP2102 etc.) handle large writes fine
 	// and chunking just adds unnecessary syscall overhead.
-	if c.usesUSB {
+	if usesUSB {
 		const maxChunk = 64
 		for off := 0; off < len(frame); off += maxChunk {
 			end := off + maxChunk
 			if end > len(frame) {
 				end = len(frame)
 			}
-			if err := writeRetryEINTR(c.port, frame[off:end]); err != nil {
+			if err := writeRetryEINTR(port, frame[off:end]); err != nil {
 				return err
 			}
 		}
 	} else {
-		if err := writeRetryEINTR(c.port, frame); err != nil {
+		if err := writeRetryEINTR(port, frame); err != nil {
 			return err
 		}
 	}
@@ -196,7 +228,7 @@ func (c *conn) sendCommand(opcode byte, data []byte, chk uint32) error {
 	// ensures each frame is committed to the USB-UART bridge before we
 	// proceed, adding a small but deterministic delay that gives the stub
 	// more time between consecutive commands.
-	return drainRetryEINTR(c.port)
+	return drainRetryEINTR(port)
 }
 
 // writeRetryEINTR calls port.Write, retrying transparently if interrupted by a

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.bug.st/serial"
 )
 
 func TestUSBInterfaceFromPort(t *testing.T) {
@@ -94,4 +96,40 @@ func TestESP32S2PostConnectOTGByVIDPID(t *testing.T) {
 	err := esp32s2PostConnect(f)
 	assert.NoError(t, err)
 	assert.True(t, f.usesUSB)
+}
+
+// TestConnectDefaultResetUsesUSBJTAGOnSerialJTAGPort checks that the default
+// reset mode uses the USB-JTAG reset on a 303a:1001 port, as esptool does.
+func TestConnectDefaultResetUsesUSBJTAGOnSerialJTAGPort(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		vid, pid  string
+		firstCall lineCall
+	}{
+		{"usb-serial-jtag", "303A", "1001", lineCall{"RTS", false}},
+		{"uart bridge", "1A86", "7523", lineCall{"DTR", false}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stubPortVIDPID(t, tt.vid, tt.pid, true)
+			first := &recordingPort{}
+			opened := 0
+			opts := &FlasherOptions{
+				BaudRate:        115200,
+				ResetMode:       ResetDefault,
+				ConnectAttempts: 1,
+				SerialOpener: func(name string, mode *serial.Mode) (serial.Port, error) {
+					opened++
+					if opened == 1 {
+						return first, nil
+					}
+					return &recordingPort{}, nil
+				},
+			}
+
+			_, err := New("fake", opts)
+			require.Error(t, err)
+			require.NotEmpty(t, first.calls)
+			assert.Equal(t, tt.firstCall, first.calls[0])
+		})
+	}
 }
