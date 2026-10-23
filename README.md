@@ -184,6 +184,8 @@ for _, e := range entries {
 | `usb-jtag` | `ResetUSBJTAG` | Reset sequence for boards with a native USB-JTAG/Serial interface (ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2). Use this when connected via `/dev/ttyACM0` (Linux) or `cu.usbmodem*` (macOS). |
 | `no-reset` | `ResetNoReset` | Skip hardware reset entirely. Useful when the chip is already in bootloader mode or reset is handled externally. |
 
+If the port is a program's USB-OTG CDC device with the Espressif VID (not the 303a:1001 USB-JTAG/Serial unit), every mode except `no-reset` first sends a 1200 baud touch. A program that supports it, such as TinyGo with `-tags=usbotg` on the ESP32-S3, restarts into download mode on USB-JTAG/Serial, and espflasher continues on that port.
+
 ## API Overview
 
 ### Creating a Flasher

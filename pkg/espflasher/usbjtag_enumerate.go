@@ -31,3 +31,26 @@ func enumeratePortVIDPID(name string) (vid, pid string, ok bool) {
 	}
 	return "", "", false
 }
+
+// findUSBJTAGPort returns the USB-Serial/JTAG port, preferring the given
+// name. ok is false if there is no such port or more than one to choose from.
+var findUSBJTAGPort = func(prefer string) (name string, ok bool) {
+	ports, err := enumerator.GetDetailedPortsList()
+	if err != nil {
+		return "", false
+	}
+	var found []string
+	for _, p := range ports {
+		if !p.IsUSB || strings.ToUpper(p.VID) != espressifUSBVID || strings.ToUpper(p.PID) != usbSerialJTAGPID {
+			continue
+		}
+		if samePortName(p.Name, prefer) {
+			return p.Name, true
+		}
+		found = append(found, p.Name)
+	}
+	if len(found) != 1 {
+		return "", false
+	}
+	return found[0], true
+}

@@ -354,6 +354,9 @@ func (f *Flasher) connect() error {
 	// UART bridge resets don't enter download mode on USB-Serial/JTAG.
 	// Reference: esptool loader.py _construct_reset_strategy_sequence().
 	resetMode := f.opts.ResetMode
+	if resetMode != ResetNoReset && f.touchUSBOTG() {
+		resetMode = ResetUSBJTAG
+	}
 	if resetMode == ResetDefault && f.usbInterfaceFromPort() == usbInterfaceSerialJTAG {
 		f.logf("USB-JTAG/Serial port detected, using USB-JTAG reset")
 		resetMode = ResetUSBJTAG
