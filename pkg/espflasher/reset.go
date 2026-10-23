@@ -34,6 +34,9 @@ const (
 
 	// extraResetDelay is used for longer-duration reset cycles on some devices.
 	extraResetDelay = 550 * time.Millisecond
+
+	// romBannerTimeout is how long to wait for the ROM boot line after a reset.
+	romBannerTimeout = 500 * time.Millisecond
 )
 
 // setDTRandRTS sets DTR and RTS simultaneously.

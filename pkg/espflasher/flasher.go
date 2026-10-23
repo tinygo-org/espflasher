@@ -1225,7 +1225,34 @@ func (f *Flasher) Reset() {
 		f.logf("Warning: device may not have been reset: %v", err)
 		return
 	}
+	if f.usesUSB && f.chip != nil && f.chip.DownloadModeReset != nil && f.inDownloadMode() {
+		f.chip.DownloadModeReset(f)
+	}
 	f.logf("Device reset.")
+}
+
+// inDownloadMode reads the ROM boot line after a reset and reports if it
+// shows download mode. It writes nothing, so a running app sees no input.
+func (f *Flasher) inDownloadMode() bool {
+	var buf []byte
+	tmp := make([]byte, 256)
+	deadline := time.Now().Add(romBannerTimeout)
+	for time.Now().Before(deadline) {
+		f.port.SetReadTimeout(50 * time.Millisecond) //nolint:errcheck
+		n, err := f.port.Read(tmp)
+		if err != nil {
+			return false
+		}
+		buf = append(buf, tmp[:n]...)
+		i := bytes.Index(buf, []byte("boot:0x"))
+		if i < 0 {
+			continue
+		}
+		if end := bytes.IndexByte(buf[i:], '\n'); end >= 0 {
+			return bytes.Contains(buf[i:i+end], []byte("DOWNLOAD"))
+		}
+	}
+	return false
 }
 
 // clearForceDownloadBoot clears the force-download-boot bit for chips that

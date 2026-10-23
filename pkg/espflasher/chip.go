@@ -146,6 +146,10 @@ type chipDef struct {
 	// Flasher.Reset(). It returns false to fall back to the DTR/RTS reset.
 	HardReset func(f *Flasher) bool
 
+	// DownloadModeReset is an optional reset tried when the ROM boot line
+	// after the DTR/RTS reset shows download mode.
+	DownloadModeReset func(f *Flasher) bool
+
 	// RTC_CNTL_OPTION1 register and its FORCE_DOWNLOAD_BOOT bit. The bit
 	// survives a reset (RTC domain), so Flasher.Reset clears it or the
 	// chip comes back up in download mode. 0 when not known for the chip.

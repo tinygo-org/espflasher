@@ -83,8 +83,8 @@ var defESP32S3 = &chipDef{
 
 	FlashSizes: defaultFlashSizes(),
 
-	PostConnect: esp32s3PostConnect,
-	HardReset:   esp32s3WatchdogReset.hardReset,
+	PostConnect:       esp32s3PostConnect,
+	DownloadModeReset: esp32s3WatchdogReset.hardReset,
 
 	ForceDownloadBootReg:  esp32s3RTCCntlOption1Reg,
 	ForceDownloadBootMask: esp32s3RTCCntlForceDownloadBoot,

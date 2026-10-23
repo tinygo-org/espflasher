@@ -110,21 +110,60 @@ func TestWatchdogResetFallsBack(t *testing.T) {
 }
 
 func TestFlasherResetWatchdog(t *testing.T) {
-	for _, tt := range watchdogResetChips {
-		t.Run(tt.name, func(t *testing.T) {
-			port := &recordingPort{}
-			f := &Flasher{
-				conn:    &mockConnection{},
-				port:    port,
-				opts:    &FlasherOptions{},
-				chip:    tt.chip,
-				usesUSB: true,
-			}
+	port := &recordingPort{}
+	f := &Flasher{
+		conn:    &mockConnection{},
+		port:    port,
+		opts:    &FlasherOptions{},
+		chip:    defESP32S2,
+		usesUSB: true,
+	}
 
-			f.Reset()
+	f.Reset()
 
-			assert.Empty(t, port.calls, "watchdog reset must not toggle DTR/RTS")
-		})
+	assert.Empty(t, port.calls, "watchdog reset must not toggle DTR/RTS")
+}
+
+func TestFlasherResetDownloadMode(t *testing.T) {
+	for _, tt := range watchdogResetChips[1:] {
+		for _, c := range []struct {
+			name     string
+			banner   string
+			watchdog bool
+		}{
+			{"download", "ESP-ROM:esp32c3-api1-20210207\r\nrst:0x15 (USB_UART_CHIP_RESET),boot:0x0 (DOWNLOAD(USB/UART0))\r\nwaiting for download\r\n", true},
+			{"flash boot", "ESP-ROM:esp32c3-api1-20210207\r\nrst:0x15 (USB_UART_CHIP_RESET),boot:0x8 (SPI_FAST_FLASH_BOOT)\r\n", false},
+			{"no banner", "", false},
+		} {
+			t.Run(tt.name+"/"+c.name, func(t *testing.T) {
+				port := &recordingPort{rx: []byte(c.banner)}
+				var wdt bool
+				mc := &mockConnection{
+					syncFunc: func() (uint32, error) {
+						t.Fatal("Reset must not send a sync to a running application")
+						return 0, nil
+					},
+					writeRegFunc: func(addr, value, mask, delayUS uint32) error {
+						if addr == tt.r.wdtConfig0 {
+							wdt = true
+						}
+						return nil
+					},
+				}
+				f := &Flasher{
+					conn:    mc,
+					port:    port,
+					opts:    &FlasherOptions{},
+					chip:    tt.chip,
+					usesUSB: true,
+				}
+
+				f.Reset()
+
+				assert.NotEmpty(t, port.calls, "DTR/RTS reset must come first")
+				assert.Equal(t, c.watchdog, wdt)
+			})
+		}
 	}
 }
 
