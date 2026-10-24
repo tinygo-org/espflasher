@@ -185,8 +185,13 @@ func hardReset(port serial.Port, usesUSB bool) error {
 	}
 	set(port.SetRTS(true)) // EN=LOW (chip in reset)
 	if usesUSB {
+		// The chip resets on this edge. An app that moves the USB PHY to
+		// USB-OTG removes the port before the release, so ignore that error.
+		reset := firstErr == nil
 		time.Sleep(200 * time.Millisecond)
-		set(port.SetRTS(false))
+		if err := port.SetRTS(false); !reset {
+			set(err)
+		}
 		time.Sleep(200 * time.Millisecond)
 	} else {
 		time.Sleep(100 * time.Millisecond)

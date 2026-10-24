@@ -411,6 +411,38 @@ func TestHardResetReportsError(t *testing.T) {
 	}
 }
 
+// goneAfterResetPort fails every write after the first SetRTS(true), like a
+// USB-JTAG port that disappears when the new app moves the PHY to USB-OTG.
+type goneAfterResetPort struct {
+	recordingPort
+	gone bool
+}
+
+func (g *goneAfterResetPort) SetDTR(dtr bool) error {
+	g.recordingPort.SetDTR(dtr) //nolint:errcheck
+	if g.gone {
+		return errors.New("broken pipe")
+	}
+	return nil
+}
+
+func (g *goneAfterResetPort) SetRTS(rts bool) error {
+	g.recordingPort.SetRTS(rts) //nolint:errcheck
+	if g.gone {
+		return errors.New("broken pipe")
+	}
+	g.gone = rts
+	return nil
+}
+
+// TestHardResetUSBPortGoneAfterReset verifies the USB path reports success
+// when only the release write fails, since the reset already happened.
+func TestHardResetUSBPortGoneAfterReset(t *testing.T) {
+	assert.NoError(t, hardReset(&goneAfterResetPort{}, true))
+	assert.Error(t, hardReset(&goneAfterResetPort{}, false),
+		"UART bridges keep the port, so a failed release still matters")
+}
+
 // TestFlasherResetReportsFailedReset verifies Reset() doesn't claim
 // "Device reset." when the DTR/RTS writes never reached the device.
 func TestFlasherResetReportsFailedReset(t *testing.T) {
