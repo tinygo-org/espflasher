@@ -15,6 +15,12 @@ A Go command-line tool and library for flashing firmware to Espressif ESP8266 an
 - ESP32-C5
 - ESP32-C6
 - ESP32-H2
+- ESP32-P4 (rev 3.x)
+
+> The ESP32-P4 defaults to rev 3.x (ECO6). The legacy ECO2 silicon (rev 1.x, no longer sold)
+> is selectable with `-chip esp32p4-rev1`. P4 flashes in ROM mode — the RAM stub loads but does
+> not answer flash commands — so the stub is skipped automatically and a final
+> `FLASH_END` is sent after the last image part.
 
 ## CLI Tool
 
@@ -47,8 +53,8 @@ espflasher -port /dev/ttyUSB0 \
     -partitions partitions.bin \
     -app application.bin
 
-# Erase flash before writing
-espflasher -port /dev/ttyUSB0 -erase-all firmware.bin
+# Flash an ESP32-P4 (rev 3.x) over its native USB-JTAG/Serial port
+espflasher -port /dev/ttyACM0 -reset usb-jtag -chip esp32p4 app.bin
 ```
 
 ## Library
@@ -112,7 +118,7 @@ func main() {
 - **Progress callbacks**: Monitor flash progress in real-time
 - **MD5 verification**: Verifies written data integrity after flashing
 - **Flash readback**: Read flash contents back with byte-accurate progress reporting
-- **GPIO access**: Read, drive, and release GPIO pins over the ROM/stub connection on ESP32, ESP32-S2, ESP32-C3, and ESP32-S3
+- **GPIO access**: Read, drive, and release GPIO pins over the ROM/stub connection on ESP32-S2, ESP32-C3, and ESP32-S3
 - **Connection hooks**: Display connection-phase status updates or override serial port opening when integrating with monitors or custom transports
 - **Configurable**: Customize baud rate, compression, reset mode, and more
 - **USB-JTAG/Serial**: Native USB support for boards like ESP32-S3 and ESP32-C3 that expose a built-in USB-JTAG/Serial interface (typically `/dev/ttyACM0` on Linux, `cu.usbmodem*` on macOS)
@@ -181,7 +187,7 @@ for _, e := range entries {
 | CLI Flag | Go Constant | Description |
 |----------|-------------|-------------|
 | `default` | `ResetDefault` | Classic DTR/RTS reset sequence. Works with most boards using a USB-to-UART bridge (CP2102, CH340, etc.). |
-| `usb-jtag` | `ResetUSBJTAG` | Reset sequence for boards with a native USB-JTAG/Serial interface (ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2). Use this when connected via `/dev/ttyACM0` (Linux) or `cu.usbmodem*` (macOS). |
+| `usb-jtag` | `ResetUSBJTAG` | Reset sequence for boards with a native USB-JTAG/Serial interface (ESP32-S3, ESP32-C3, ESP32-C6, ESP32-H2, ESP32-P4). Use this when connected via `/dev/ttyACM0` (Linux) or `cu.usbmodem*` (macOS). |
 | `no-reset` | `ResetNoReset` | Skip hardware reset entirely. Useful when the chip is already in bootloader mode or reset is handled externally. |
 
 If the port is a program's USB-OTG CDC device with the Espressif VID (not the 303a:1001 USB-JTAG/Serial unit), every mode except `no-reset` first sends a 1200 baud touch. A program that supports it, such as TinyGo with `-tags=usbotg` on the ESP32-S3, restarts into download mode on USB-JTAG/Serial, and espflasher continues on that port.
@@ -211,6 +217,12 @@ opts.ConnectStatus = func(phase espflasher.ConnectPhase, attempt, maxAttempts in
 }
 opts.SkipStub = true
 flasher, err := espflasher.New("/dev/ttyUSB0", opts)
+
+// Flash an ESP32-P4 (rev 3.x). P4 flashes in ROM mode, so the stub is skipped
+// automatically; select the chip explicitly and use the USB-JTAG reset.
+opts.ChipType = espflasher.ChipESP32P4Rev3
+opts.ResetMode = espflasher.ResetUSBJTAG
+flasher, err = espflasher.New("/dev/ttyACM0", opts)
 ```
 
 ### Flashing a Single Binary

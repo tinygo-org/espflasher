@@ -476,7 +476,7 @@ synced:
 	if f.conn.isStub() {
 		// Reference: esptool loader.py run_stub().
 		f.logf("Stub loader is already running, no upload needed.")
-	} else if f.opts.SkipStub {
+	} else if f.opts.SkipStub || f.chip.SkipStub {
 		f.logf("Skipping stub loader (SkipStub set); ROM bootloader only.")
 	} else if s, ok := stubFor(f.chip.ChipType); ok {
 		f.logf("Loading stub loader...")
@@ -725,6 +725,18 @@ func (f *Flasher) FlashImages(images []ImagePart, progress ProgressFunc) error {
 		}
 
 		written += len(img.Data)
+	}
+
+	// P4 ROM flash: finalize the write and reboot. The poke emitted by
+	// command() flushes the ROM's deferred FLASH_END reply, so this returns
+	// even though the P4 ROM defers replies. A timeout here does not mean the
+	// write failed (the data is already in flash), so log and continue
+	// rather than failing the flash. Only the ROM path (not the stub, which
+	// already sent FLASH_END as a per-part write barrier) reaches this point.
+	if !f.conn.isStub() && f.chip != nil && f.chip.ChipType == ChipESP32P4Rev3 {
+		if err := f.conn.flashEnd(true); err != nil {
+			f.logf("Warning: FLASH_END reply not received: %v", err)
+		}
 	}
 
 	return nil

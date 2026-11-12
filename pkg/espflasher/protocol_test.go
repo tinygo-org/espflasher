@@ -209,6 +209,23 @@ func TestSendCommandFormat(t *testing.T) {
 	}
 }
 
+// findWrite returns the decoded SLIP frame whose command opcode matches want,
+// scanning every write captured by a mock port. command() emits a SYNC
+// "poke" write after each real command, so the real command is not always the
+// last write; this selects it by opcode instead.
+func findWrite(t *testing.T, writes [][]byte, want byte) []byte {
+	t.Helper()
+	for _, w := range writes {
+		decoded := slipDecode(w)
+		if len(decoded) < 2 || decoded[1] != want {
+			continue
+		}
+		return decoded
+	}
+	t.Fatalf("no write found with opcode 0x%02X", want)
+	return nil
+}
+
 func TestFlashBeginParamLength(t *testing.T) {
 	// Verify that flash begin sends 16 bytes for older chips and 20 for newer.
 	tests := []struct {
@@ -224,10 +241,10 @@ func TestFlashBeginParamLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var written []byte
+			var writes [][]byte
 			mock := &mockPort{
 				writeFunc: func(data []byte) (int, error) {
-					written = data
+					writes = append(writes, data)
 					return len(data), nil
 				},
 				readFunc: func(buf []byte) (int, error) {
@@ -249,7 +266,7 @@ func TestFlashBeginParamLength(t *testing.T) {
 			_ = c.flashBegin(4096, 0x1000, false) // ignore errors from mock
 
 			// Decode the SLIP frame to get the packet
-			decoded := slipDecode(written)
+			decoded := findWrite(t, writes, cmdFlashBegin)
 			if len(decoded) < 8 {
 				t.Fatalf("packet too short: %d bytes", len(decoded))
 			}
@@ -277,10 +294,10 @@ func TestFlashDeflBeginParamLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var written []byte
+			var writes [][]byte
 			mock := &mockPort{
 				writeFunc: func(data []byte) (int, error) {
-					written = data
+					writes = append(writes, data)
 					return len(data), nil
 				},
 				readFunc: func(buf []byte) (int, error) {
@@ -300,7 +317,7 @@ func TestFlashDeflBeginParamLength(t *testing.T) {
 
 			_ = c.flashDeflBegin(4096, 2048, 0x1000, false)
 
-			decoded := slipDecode(written)
+			decoded := findWrite(t, writes, cmdFlashDeflBeg)
 			if len(decoded) < 8 {
 				t.Fatalf("packet too short: %d bytes", len(decoded))
 			}
@@ -329,10 +346,10 @@ func TestChangeBaudSecondParam(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var written []byte
+			var writes [][]byte
 			mock := &mockPort{
 				writeFunc: func(data []byte) (int, error) {
-					written = data
+					writes = append(writes, data)
 					return len(data), nil
 				},
 				readFunc: func(buf []byte) (int, error) {
@@ -351,7 +368,7 @@ func TestChangeBaudSecondParam(t *testing.T) {
 
 			_ = c.changeBaud(tt.newBaud, tt.oldBaud)
 
-			decoded := slipDecode(written)
+			decoded := findWrite(t, writes, cmdChangeBaud)
 			if len(decoded) < 8+8 {
 				t.Fatalf("packet too short: %d bytes", len(decoded))
 			}

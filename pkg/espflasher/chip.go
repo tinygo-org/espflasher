@@ -20,6 +20,7 @@ const (
 	ChipESP32C6
 	ChipESP32H2
 	ChipESP32P4Rev1
+	ChipESP32P4Rev3 // Production silicon, rev >= 3.0 (ECO6)
 	ChipAuto // Auto-detect chip type
 )
 
@@ -46,6 +47,8 @@ func (c ChipType) String() string {
 		return "ESP32-H2"
 	case ChipESP32P4Rev1:
 		return "ESP32-P4-Rev1"
+	case ChipESP32P4Rev3:
+		return "ESP32-P4-Rev3"
 	case ChipAuto:
 		return "Auto"
 	default:
@@ -137,6 +140,13 @@ type chipDef struct {
 	// FlashSizes maps size strings to header byte values.
 	FlashSizes map[string]byte
 
+	// SkipStub, when true, flashes the ROM bootloader directly and never
+	// uploads the RAM stub. Some chips (e.g. ESP32-P4) have a RAM stub that
+	// answers Sync but then stops answering flash commands, so flashing in
+	// ROM mode is the only working path. connect() honors this even when the
+	// user did not set FlasherOptions.SkipStub.
+	SkipStub bool
+
 	// PostConnect is called after chip detection to perform chip-specific
 	// initialization (e.g. USB interface detection, watchdog disable).
 	// May set Flasher fields like usesUSB.
@@ -187,6 +197,7 @@ var chipDefs = map[ChipType]*chipDef{
 	ChipESP32C6:     defESP32C6,
 	ChipESP32H2:     defESP32H2,
 	ChipESP32P4Rev1: defESP32P4Rev1,
+	ChipESP32P4Rev3: defESP32P4Rev3,
 }
 
 // detectChipByMagic returns the chip definition matching the given magic value,

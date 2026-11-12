@@ -26,7 +26,7 @@ func main() {
 	port := flag.String("port", "", "Serial port (e.g. /dev/ttyUSB0, COM3)")
 	baud := flag.Int("baud", 460800, "Flash baud rate")
 	offset := flag.String("offset", "0x0", "Flash offset for single binary mode")
-	chip := flag.String("chip", "auto", "Chip type: auto, esp8266, esp32, esp32s2, esp32s3, esp32c2, esp32c3, esp32c5, esp32c6, esp32h2, esp32p4-rev1")
+	chip := flag.String("chip", "auto", "Chip type: auto, esp8266, esp32, esp32s2, esp32s3, esp32c2, esp32c3, esp32c5, esp32c6, esp32h2, esp32p4-rev1, esp32p4 (rev3)")
 	noCompress := flag.Bool("no-compress", false, "Disable compression")
 	eraseAll := flag.Bool("erase-all", false, "Erase entire flash before writing")
 	flashMode := flag.String("fm", "keep", "Flash mode: keep, qio, qout, dio, dout")
@@ -234,6 +234,8 @@ func parseChipType(s string) espflasher.ChipType {
 		return espflasher.ChipESP32H2
 	case "esp32p4-rev1", "esp32-p4-rev1":
 		return espflasher.ChipESP32P4Rev1
+	case "esp32p4", "esp32-p4", "esp32p4-rev3", "esp32-p4-rev3":
+		return espflasher.ChipESP32P4Rev3
 	default:
 		log.Fatalf("Unknown chip type: %s", s)
 		return espflasher.ChipAuto

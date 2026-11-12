@@ -81,6 +81,11 @@ const (
 	flashWritePerMBRate  = 40 * time.Second // per megabyte
 	flashWriteMinTimeout = 10 * time.Second // minimum timeout for any flash write
 
+	// p4MaxStaleFrames caps the number of read attempts in command() (stale
+	// frames plus read timeouts) before it gives up on a chip that never
+	// answers the requested opcode.
+	p4MaxStaleFrames = 256
+
 	// stubFlashPageDelay is the estimated time for the ESP32 ROM to program
 	// one 256-byte flash page. The stub uses double-buffering: it ACKs each
 	// flash data block immediately and writes to flash as a post-process.
@@ -97,6 +102,24 @@ const (
 	// with margin.
 	stubFlashPageDelay = 1 * time.Millisecond
 )
+
+// p4CommandDeadline bounds how long command() waits for a reply before giving
+// up. It is a var (not const) so tests can shorten it. It is a safety net for
+// the common handshake path; long operations (e.g. erase) are bounded by the
+// per-command timeout passed to command() and are never cut short by this value.
+var p4CommandDeadline = 8 * time.Second
+
+// syncPayload is the SYNC command body: the 0x07 0x07 0x12 0x20 magic followed
+// by 32 bytes of 0x55. command() reuses it to emit a SYNC "poke" that flushes
+// a deferred ROM reply (see the comment in command()).
+var syncPayload = func() []byte {
+	p := make([]byte, 36)
+	p[0], p[1], p[2], p[3] = 0x07, 0x07, 0x12, 0x20
+	for i := 4; i < len(p); i++ {
+		p[i] = 0x55
+	}
+	return p
+}()
 
 // conn wraps the serial port and provides the low-level protocol operations.
 type conn struct {
@@ -281,11 +304,40 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		return nil, nil
 	}
 
-	// Try to get a matching response (filter for correct opcode)
-	for range 100 {
-		frame, err := c.reader.ReadFrame(timeout)
+	// Some ROM bootloaders (notably ESP32-P4) defer a command's reply until
+	// the next command arrives — the "one-command pipeline lag". Sending a
+	// SYNC "poke" here acts as that next command and flushes the queued
+	// reply, so the read loop below sees it. The poke is harmless on other
+	// chips: their reply is read first, and the poke's own reply is drained
+	// as a stale frame by the next command. It is only needed for the ROM,
+	// never the RAM stub (which replies immediately), so it is skipped when
+	// the stub is running.
+	if !c.stub {
+		_ = c.sendCommand(cmdSync, syncPayload, 0)
+	}
+
+	// Read the matching reply. The loop is bounded by p4MaxStaleFrames and by
+	// the per-command timeout (the deadline), so a chip that never answers
+	// fails fast instead of looping forever. Long operations such as erase
+	// pass a much larger timeout and are never cut short by the stale-frame
+	// cap. A zero timeout means "unbounded", so it falls back to
+	// p4CommandDeadline rather than letting the loop run indefinitely.
+	deadlineBudget := timeout
+	if deadlineBudget == 0 {
+		deadlineBudget = p4CommandDeadline
+	}
+	deadline := time.Now().Add(deadlineBudget)
+	for range p4MaxStaleFrames {
+		if time.Now().After(deadline) {
+			break
+		}
+		readTimeout := deadlineBudget
+		if rem := time.Until(deadline); rem < readTimeout {
+			readTimeout = rem
+		}
+		frame, err := c.reader.ReadFrame(readTimeout)
 		if err != nil {
-			return nil, err
+			continue // read timeout/error: count as a stale iteration
 		}
 
 		if len(frame) < 8 {
@@ -302,10 +354,6 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		}
 
 		if opRet != opcode {
-			// Check if this is an error response to flush
-			if len(respData) >= 2 && respData[0] != 0 && respData[1] == romInvalidRecvMsg {
-				continue
-			}
 			continue
 		}
 
@@ -315,7 +363,7 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		}, nil
 	}
 
-	return nil, fmt.Errorf("no valid response for command 0x%02X after 100 retries", opcode)
+	return nil, fmt.Errorf("no valid response for command 0x%02X after %d retries", opcode, p4MaxStaleFrames)
 }
 
 // checkCommand sends a command and checks the status in the response.
@@ -366,17 +414,7 @@ func (c *conn) checkCommand(opDesc string, opcode byte, data []byte, chk uint32,
 // sync sends the SYNC command to synchronize with the ESP bootloader.
 // Returns the response value to detect if a stub flasher is already running.
 func (c *conn) sync() (uint32, error) {
-	// Sync payload: 0x07 0x07 0x12 0x20 followed by 32 bytes of 0x55
-	payload := make([]byte, 36)
-	payload[0] = 0x07
-	payload[1] = 0x07
-	payload[2] = 0x12
-	payload[3] = 0x20
-	for i := 4; i < 36; i++ {
-		payload[i] = 0x55
-	}
-
-	resp, err := c.command(cmdSync, payload, 0, syncTimeout, true)
+	resp, err := c.command(cmdSync, syncPayload, 0, syncTimeout, true)
 	if err != nil {
 		return 0, err
 	}
