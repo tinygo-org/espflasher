@@ -509,6 +509,10 @@ func (f *Flasher) detectChip() (*chipDef, error) {
 		}
 
 		if si != nil && si.ChipID != nil && *si.ChipID == uint32(def.ImageChipID) {
+			switch def.ChipType {
+			case ChipESP32P4Rev1, ChipESP32P4Rev3:
+				def = f.esp32p4DefByRevision()
+			}
 			def.SecureDownloadMode = si.ParsedFlags.SecureDownloadEnable
 			return def, nil
 		}

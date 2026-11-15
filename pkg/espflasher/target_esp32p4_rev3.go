@@ -105,3 +105,18 @@ func esp32p4Rev3PostConnect(f *Flasher) error {
 
 	return nil
 }
+
+// esp32p4DefByRevision selects the ESP32-P4 definition from the eFuse revision,
+// because rev1 and rev3 share chip ID 18.
+// Reference: esptool/targets/esp32p4.py ESP32P4StubLoader.stub_json_name().
+func (f *Flasher) esp32p4DefByRevision() *chipDef {
+	rev, err := esp32p4Rev1ReadChipRevision(f)
+	if err != nil {
+		f.logf("unable to read ESP32-P4 revision, assuming rev3: %s", err)
+		return defESP32P4Rev3
+	}
+	if rev.Major < 3 {
+		return defESP32P4Rev1
+	}
+	return defESP32P4Rev3
+}
