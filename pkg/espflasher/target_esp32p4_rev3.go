@@ -1,5 +1,7 @@
 package espflasher
 
+import "time"
+
 // ESP32-P4 Rev3 (production silicon, chip revision >= 3.0, ECO6) register
 // addresses for USB interface detection and watchdog control.
 //
@@ -100,9 +102,90 @@ func esp32p4Rev3PostConnect(f *Flasher) error {
 	if usbJTAG {
 		f.usesUSB = true
 		f.logf("USB-JTAG/Serial interface detected (ESP32-P4 rev3), disabling watchdogs")
-		return disableWatchdogsLP(f, esp32p4LPWDTConfig0, esp32p4LPWDTWProtect, esp32p4LPWDTSWDConf, esp32p4LPWDTSWDWProtect)
+		if err := disableWatchdogsLP(f, esp32p4LPWDTConfig0, esp32p4LPWDTWProtect, esp32p4LPWDTSWDConf, esp32p4LPWDTSWDWProtect); err != nil {
+			return err
+		}
 	}
 
+	if f.chip != nil && f.chip.SecureDownloadMode {
+		return nil
+	}
+	return esp32p4PowerOnFlash(f)
+}
+
+// Flash power registers. Reference: esptool/targets/esp32p4.py.
+const (
+	esp32p4EfuseRdRepeatData1    uint32 = 0x5012D034
+	esp32p4EfuseDownloadXPDOn    uint32 = 1 << 16
+	esp32p4LPSysAnaXPDPadGroup   uint32 = 0x5011010C
+	esp32p4PMUExtLDOP00P1A       uint32 = 0x501151B8
+	esp32p4PMUExtLDOP00P1AAna    uint32 = 0x501151BC
+	esp32p4PMUDate               uint32 = 0x501153FC
+	esp32p4PMU0P1AForceTieHSel   uint32 = 1 << 7
+	esp32p4PMU0P1ATarget0        uint32 = 0xFF << 23
+	esp32p4PMUAna0P1AEnCurLim    uint32 = 1 << 27
+	esp32p4PMUDateFlashForceOn   uint32 = 0x3
+	esp32p4PMUExtLDOP00P1AUpdate uint32 = 0x80
+)
+
+// esp32p4PowerOnFlash powers on the flash before SPI attach. Revision 3.1 and
+// later boot with the flash off. Reference: esptool/targets/esp32p4.py power_on_flash().
+func esp32p4PowerOnFlash(f *Flasher) error {
+	rev, err := esp32p4Rev1ReadChipRevision(f)
+	if err != nil {
+		return err
+	}
+	revision := rev.Major*100 + rev.Minor
+	if revision < 301 {
+		return nil
+	}
+
+	if revision == 302 {
+		efuse, err := f.ReadRegister(esp32p4EfuseRdRepeatData1)
+		if err != nil {
+			return err
+		}
+		if efuse&esp32p4EfuseDownloadXPDOn != 0 {
+			date, err := f.ReadRegister(esp32p4PMUDate)
+			if err != nil {
+				return err
+			}
+			if date&esp32p4PMUDateFlashForceOn == esp32p4PMUDateFlashForceOn {
+				return f.WriteRegister(esp32p4PMUDate, date&^esp32p4PMUDateFlashForceOn)
+			}
+			return nil
+		}
+	}
+
+	f.logf("Powering on flash (ESP32-P4 rev %s)", rev)
+	if err := f.WriteRegister(esp32p4LPSysAnaXPDPadGroup, 1); err != nil {
+		return err
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	steps := []struct {
+		addr      uint32
+		set, clr  uint32
+		sleepTime time.Duration
+	}{
+		{esp32p4PMUExtLDOP00P1AAna, esp32p4PMUAna0P1AEnCurLim, 0, 0},
+		{esp32p4PMUExtLDOP00P1A, esp32p4PMU0P1AForceTieHSel, 0, 0},
+		{esp32p4PMUDate, esp32p4PMUDateFlashForceOn, 0, 50 * time.Microsecond},
+		{esp32p4PMUExtLDOP00P1AAna, 0, esp32p4PMUAna0P1AEnCurLim, 0},
+		{esp32p4PMUExtLDOP00P1A, 0, esp32p4PMU0P1ATarget0, 0},
+		{esp32p4PMUExtLDOP00P1A, esp32p4PMUExtLDOP00P1AUpdate, 0, 0},
+		{esp32p4PMUExtLDOP00P1A, 0, esp32p4PMU0P1AForceTieHSel, 1800 * time.Microsecond},
+	}
+	for _, s := range steps {
+		v, err := f.ReadRegister(s.addr)
+		if err != nil {
+			return err
+		}
+		if err := f.WriteRegister(s.addr, v&^s.clr|s.set); err != nil {
+			return err
+		}
+		time.Sleep(s.sleepTime)
+	}
 	return nil
 }
 
