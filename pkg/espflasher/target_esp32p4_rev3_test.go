@@ -141,3 +141,39 @@ func TestESP32P4Rev3ReadErrorsPropagate(t *testing.T) {
 	assertRegisterErrorsPropagate(t, newF, []uint32{esp32p4EfuseBlock1Word2},
 		func(f *Flasher) error { _, err := f.ChipRevision(); return err })
 }
+
+func TestDetectChipESP32P4ByRevision(t *testing.T) {
+	tests := []struct {
+		name  string
+		word2 uint32
+		err   error
+		want  ChipType
+	}{
+		{"v1.3", (1 << 4) | 3, nil, ChipESP32P4Rev1},
+		{"v3.0", 3 << 4, nil, ChipESP32P4Rev3},
+		{"v3.2", (3 << 4) | 2, nil, ChipESP32P4Rev3},
+		{"read error", 0, errors.New("read failed"), ChipESP32P4Rev3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mc := &mockConnection{
+				securityInfoFunc: func() ([]byte, error) {
+					return makeSecurityInfo20(18), nil
+				},
+				readRegFunc: func(addr uint32) (uint32, error) {
+					if addr == esp32p4EfuseBlock1Word2 {
+						return tt.word2, tt.err
+					}
+					return 0, nil
+				},
+			}
+			f := &Flasher{opts: DefaultOptions(), conn: mc}
+			// chipDefs is a map, so repeat to cover random iteration order.
+			for range 50 {
+				def, err := f.detectChip()
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, def.ChipType)
+			}
+		})
+	}
+}
