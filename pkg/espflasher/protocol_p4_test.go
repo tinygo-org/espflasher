@@ -120,3 +120,13 @@ func TestCommandFailsFastOnSilentChip(t *testing.T) {
 	require.Error(t, err, "a silent chip must cause command() to fail")
 	assert.Less(t, elapsed, 2*time.Second, "must fail fast near p4CommandDeadline, not loop forever")
 }
+
+func TestCommandTimeoutIsRetryable(t *testing.T) {
+	port := &framingPort{}
+	c := &conn{port: port, reader: newSlipReader(port), stub: true}
+
+	_, err := c.checkCommand("write compressed flash block", cmdFlashDeflData, make([]byte, 16), 0, 60*time.Millisecond, 0)
+	require.Error(t, err)
+	assert.True(t, isTimeoutError(err), "a missing reply must stay a TimeoutError")
+	assert.True(t, isRetryableFlashError(err), "a missing reply must be retried by retryFlashBlock")
+}
