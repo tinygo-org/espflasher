@@ -73,6 +73,10 @@ type FlasherOptions struct {
 	// callers that multiplex port access across a monitor and the flasher.
 	SerialOpener func(name string, mode *serial.Mode) (serial.Port, error)
 
+	// ListUSBPorts, if non-nil, replaces native USB enumeration for VID/PID
+	// lookups. Needed where there is no OS enumerator, such as WebUSB.
+	ListUSBPorts func() ([]USBPort, error)
+
 	// SkipStub, when true, skips uploading the stub loader during connect.
 	// Stub-dependent features (whole-chip erase, compression, etc.) are
 	// unavailable, but ROM operations (register read/write, flash read/write
@@ -370,7 +374,8 @@ func (f *Flasher) connect() error {
 		case ResetDefault:
 			// On Unix systems (darwin, linux), use the esptool sequence:
 			// unixTightReset with 50ms, then 550ms, then fallback to classic resets
-			if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+			_, atomicLines := f.port.(dtrRTSSetter)
+			if atomicLines || runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 				switch attempt % 4 {
 				case 0:
 					unixTightReset(f.port, defaultResetDelay)

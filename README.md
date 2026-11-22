@@ -182,6 +182,18 @@ for _, e := range entries {
 | `string` | `string` |
 | `blob` | `[]byte` |
 
+## WebUSB
+
+The `pkg/webusb` package lets you flash boards from a browser by compiling to wasm with Go or TinyGo. It supports USB CDC-ACM devices (including the ESP native USB-Serial/JTAG and USB-OTG ports), CP210x and CH34x bridges.
+
+```go
+// dev is a USBDevice from navigator.usb.requestDevice({filters: webusb.Filters()}).
+// Call this from a goroutine, not directly inside a JS callback.
+f, err := espflasher.New(webusb.PortName(dev), webusb.Options())
+```
+
+See [examples/webusb](examples/webusb) for a complete page.
+
 ## Reset Modes
 
 | CLI Flag | Go Constant | Description |
@@ -294,6 +306,7 @@ The library is organized in layers:
 | Chip | `pkg/espflasher/chip.go`, `pkg/espflasher/target_*.go` | Per-target definitions and detection |
 | Reset | `pkg/espflasher/reset.go` | Hardware reset strategies |
 | Flasher | `pkg/espflasher/flasher.go` | High-level flash/verify/reset API |
+| WebUSB | `pkg/webusb/*.go` | serial.Port over the browser WebUSB API |
 | NVS | `pkg/nvs/*.go` | Generate and parse NVS partition images |
 | CLI | `main.go` | Command-line interface |
 
