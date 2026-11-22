@@ -327,6 +327,7 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		deadlineBudget = p4CommandDeadline
 	}
 	deadline := time.Now().Add(deadlineBudget)
+	var readErr error
 	for range p4MaxStaleFrames {
 		if time.Now().After(deadline) {
 			break
@@ -337,6 +338,7 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		}
 		frame, err := c.reader.ReadFrame(readTimeout)
 		if err != nil {
+			readErr = err
 			continue // read timeout/error: count as a stale iteration
 		}
 
@@ -363,6 +365,10 @@ func (c *conn) command(opcode byte, data []byte, chk uint32, timeout time.Durati
 		}, nil
 	}
 
+	if readErr != nil {
+		// Keep the TimeoutError so retryFlashBlock can resend the block.
+		return nil, fmt.Errorf("no valid response for command 0x%02X: %w", opcode, readErr)
+	}
 	return nil, fmt.Errorf("no valid response for command 0x%02X after %d retries", opcode, p4MaxStaleFrames)
 }
 
