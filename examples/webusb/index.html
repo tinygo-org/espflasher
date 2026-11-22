@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>espflasher WebUSB</title>
+<style>
+  body { font-family: sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+  label, button, progress { display: block; margin: 0.5rem 0; }
+  progress { width: 100%; }
+  pre { background: #eee; padding: 0.5rem; height: 20rem; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>espflasher WebUSB</h1>
+<button id="connect">Select device</button>
+<label>Image <input type="file" id="file" accept=".bin"></label>
+<label>Offset <input type="text" id="offset" value="auto"></label>
+<button id="flash" disabled>Flash</button>
+<progress id="progress" value="0" max="1"></progress>
+<pre id="log"></pre>
+<script src="wasm_exec.js"></script>
+<script>
+const log = (msg) => { const el = document.getElementById("log"); el.textContent += msg + "\n"; el.scrollTop = el.scrollHeight; };
+let device = null;
+
+const go = new Go();
+WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((r) => {
+  go.run(r.instance);
+  log("Ready.");
+});
+
+document.getElementById("connect").onclick = async () => {
+  if (!navigator.usb) { log("WebUSB is not available in this browser."); return; }
+  try {
+    device = await navigator.usb.requestDevice({ filters: espflasherFilters() });
+    log(`Selected ${device.productName || "device"} (${device.vendorId.toString(16)}:${device.productId.toString(16)})`);
+    document.getElementById("flash").disabled = false;
+  } catch (e) {
+    log(e.message);
+  }
+};
+
+document.getElementById("flash").onclick = async () => {
+  const file = document.getElementById("file").files[0];
+  if (!file) { log("Choose an image first."); return; }
+  const data = new Uint8Array(await file.arrayBuffer());
+  const text = document.getElementById("offset").value.trim();
+  const offset = text === "" || text === "auto" ? -1 : parseInt(text);
+  if (Number.isNaN(offset)) { log("Invalid offset."); return; }
+  const progress = document.getElementById("progress");
+  const button = document.getElementById("flash");
+  button.disabled = true;
+  try {
+    await espflasherFlash(device, data, offset, log, (cur, total) => { progress.max = total; progress.value = cur; });
+    log("Done.");
+  } catch (e) {
+    log("Error: " + e);
+  } finally {
+    button.disabled = false;
+  }
+};
+</script>
+</body>
+</html>

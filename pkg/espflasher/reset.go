@@ -39,12 +39,21 @@ const (
 	romBannerTimeout = 500 * time.Millisecond
 )
 
+// dtrRTSSetter is a port that can set DTR and RTS in one operation.
+type dtrRTSSetter interface {
+	SetDTRAndRTS(dtr, rts bool) error
+}
+
 // setDTRandRTS sets DTR and RTS simultaneously.
 // On Unix systems (darwin, linux), uses atomic TIOCMSET ioctl to set both lines
 // in a single operation. This is important for CH340 boards that require precise
 // timing of the DTR/RTS transition.
 // On other systems, falls back to separate SetDTR and SetRTS calls.
 func setDTRandRTS(port serial.Port, dtr, rts bool) error {
+	if p, ok := port.(dtrRTSSetter); ok {
+		return p.SetDTRAndRTS(dtr, rts)
+	}
+
 	// On Unix systems, try to use atomic TIOCMSET for precise timing
 	err := setDTRandRTSAtomic(port, dtr, rts)
 	if err == nil {

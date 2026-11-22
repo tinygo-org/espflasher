@@ -11,7 +11,7 @@ import (
 // with the Espressif VID, so it restarts into download mode on USB-Serial/JTAG.
 // It reports whether the flasher now uses that USB-Serial/JTAG port.
 func (f *Flasher) touchUSBOTG() bool {
-	vid, pid, ok := portVIDPID(f.portStr)
+	vid, pid, ok := f.portVIDPID(f.portStr)
 	if !ok || vid != espressifUSBVID || pid == usbSerialJTAGPID {
 		return false
 	}
@@ -39,7 +39,7 @@ func (f *Flasher) touchUSBOTG() bool {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(250 * time.Millisecond)
-		if name, ok := findUSBJTAGPort(f.portStr); ok {
+		if name, ok := f.findUSBJTAGPort(f.portStr); ok {
 			f.portStr = name
 			return f.reopenPort() == nil
 		}

@@ -43,7 +43,7 @@ const (
 // only reported once the chip has been detected, since its PID is the
 // chip's image ID.
 func (f *Flasher) usbInterfaceFromPort() usbInterfaceKind {
-	vid, pid, ok := portVIDPID(f.portStr)
+	vid, pid, ok := f.portVIDPID(f.portStr)
 	vid, pid = strings.ToUpper(vid), strings.ToUpper(pid)
 	if !ok || vid != espressifUSBVID {
 		return usbInterfaceUnknown
@@ -55,4 +55,68 @@ func (f *Flasher) usbInterfaceFromPort() usbInterfaceKind {
 		return usbInterfaceOTG
 	}
 	return usbInterfaceUnknown
+}
+
+// USBPort describes a USB serial port by name and hex VID/PID.
+type USBPort struct {
+	Name string
+	VID  string
+	PID  string
+}
+
+// portVIDPID uses opts.ListUSBPorts if set, else the native enumerator.
+func (f *Flasher) portVIDPID(name string) (vid, pid string, ok bool) {
+	if f.opts == nil || f.opts.ListUSBPorts == nil {
+		return portVIDPID(name)
+	}
+	ports, err := f.opts.ListUSBPorts()
+	if err != nil {
+		return "", "", false
+	}
+	return lookupVIDPID(ports, name)
+}
+
+// findUSBJTAGPort uses opts.ListUSBPorts if set, else the native enumerator.
+func (f *Flasher) findUSBJTAGPort(prefer string) (name string, ok bool) {
+	if f.opts == nil || f.opts.ListUSBPorts == nil {
+		return findUSBJTAGPort(prefer)
+	}
+	ports, err := f.opts.ListUSBPorts()
+	if err != nil {
+		return "", false
+	}
+	return lookupUSBJTAGPort(ports, prefer)
+}
+
+// lookupVIDPID returns the upper-case VID/PID of the named port.
+func lookupVIDPID(ports []USBPort, name string) (vid, pid string, ok bool) {
+	for _, p := range ports {
+		if !samePortName(p.Name, name) {
+			continue
+		}
+		if p.VID == "" || p.PID == "" {
+			return "", "", false
+		}
+		return strings.ToUpper(p.VID), strings.ToUpper(p.PID), true
+	}
+	return "", "", false
+}
+
+// lookupUSBJTAGPort returns the USB-Serial/JTAG port, preferring the given
+// name. ok is false if there is no such port or more than one to choose from.
+func lookupUSBJTAGPort(ports []USBPort, prefer string) (name string, ok bool) {
+	var found []string
+	for _, p := range ports {
+		if strings.ToUpper(p.VID) != espressifUSBVID || strings.ToUpper(p.PID) != usbSerialJTAGPID {
+			continue
+		}
+		if samePortName(p.Name, prefer) {
+			return p.Name, true
+		}
+		found = append(found, p.Name)
+	}
+	if len(found) != 1 {
+		return "", false
+	}
+	return found[0], true
 }
