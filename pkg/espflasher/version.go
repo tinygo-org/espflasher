@@ -1,4 +1,4 @@
 package espflasher
 
 // Version is the current version of the espflasher library.
-const Version = "0.9.5"
+const Version = "0.10.0"
