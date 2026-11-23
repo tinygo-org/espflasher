@@ -34,10 +34,60 @@ go install tinygo.org/x/espflasher@latest
 
 ### CLI Usage
 
-```bash
-# Install
-go install tinygo.org/x/espflasher@latest
+```
+espflasher <command> [options] [args]
+```
 
+| Command | Description |
+|---|---|
+| `write-flash` | Write binary files to flash |
+| `read-flash` | Read flash contents to a file |
+| `verify-flash` | Compare flash contents with files using MD5 |
+| `erase-flash` | Erase the entire flash |
+| `erase-region` | Erase a flash region |
+| `chip-id` | Print chip type, revision, features and MAC |
+| `flash-id` | Print SPI flash manufacturer, device and size |
+| `read-mac` | Print the base MAC address |
+| `get-security-info` | Print security info from the ROM loader |
+| `read-mem` | Read a 32 bit word from memory |
+| `write-mem` | Write a 32 bit word to memory, with optional mask |
+| `run` | Reset the chip to run the application |
+| `version` | Print version |
+| `help` | Show help for a command |
+
+Command names match esptool. Underscore names like `write_flash` also work. Every device command takes `-port`, `-baud`, `-chip`, `-reset`, `-after` and `-no-stub`. Run `espflasher help <command>` to see all options.
+
+```bash
+# Write one or more files at given offsets
+espflasher write-flash -port /dev/ttyUSB0 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 app.bin
+
+# Read the whole flash to a file
+espflasher read-flash -port /dev/ttyUSB0 0x0 ALL backup.bin
+
+# Check that flash matches a file
+espflasher verify-flash -port /dev/ttyUSB0 0x10000 app.bin
+
+# Erase all flash, or one region
+espflasher erase-flash -port /dev/ttyUSB0
+espflasher erase-region -port /dev/ttyUSB0 0x9000 0x6000
+
+# Chip and flash info
+espflasher chip-id -port /dev/ttyUSB0
+espflasher flash-id -port /dev/ttyUSB0
+espflasher read-mac -port /dev/ttyUSB0
+espflasher get-security-info -port /dev/ttyUSB0
+
+# Read and write registers
+espflasher read-mem -port /dev/ttyUSB0 0x60008000
+espflasher write-mem -port /dev/ttyUSB0 0x60008000 0x1 0x1
+
+# Reset into the application
+espflasher run -port /dev/ttyUSB0
+```
+
+The original usage without a command still works:
+
+```bash
 # Flash a single binary
 espflasher -port /dev/ttyUSB0 firmware.bin
 
